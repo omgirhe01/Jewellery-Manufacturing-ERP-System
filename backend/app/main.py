@@ -19,15 +19,6 @@ from app.api.v1.all_routers import (
     users_router, customers_router, departments_router
 )
 
-# ============================================================
-# PATH SETUP (Fixes TemplateNotFound error)
-# ============================================================
-# Current file (main.py) ki directory
-BASE_DIR = os.path.dirname(os.path.abspath(__file__)) 
-# Backend folder se bahar nikal kar frontend folder dhoondna
-ROOT_DIR = os.path.dirname(os.path.dirname(BASE_DIR))
-TEMPLATE_DIR = os.path.join(ROOT_DIR, "frontend", "templates")
-STATIC_DIR = os.path.join(ROOT_DIR, "frontend", "static")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -39,6 +30,7 @@ async def lifespan(app: FastAPI):
     print(f"📖 API docs: http://localhost:8000/docs")
     yield
     print("👋 Server shutting down")
+
 
 app = FastAPI(
     title="Jewellery Manufacturing ERP",
@@ -59,11 +51,22 @@ app.add_middleware(
 )
 
 # Serve static files (CSS, JS, images)
-if os.path.exists(STATIC_DIR):
-    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+if os.path.exists("frontend/static"):
+    app.mount("/static", StaticFiles(directory="frontend/static"), name="static")
+elif os.path.exists("../frontend/static"):
+    app.mount("/static", StaticFiles(directory="../frontend/static"), name="static")
 
 # Jinja2 templates for server-rendered HTML pages
-templates = Jinja2Templates(directory=TEMPLATE_DIR)
+# Auto-detect templates directory (works from both /backend and /jewellery-erp root)
+import pathlib
+_base = pathlib.Path(__file__).parent.parent.parent  # backend/app -> backend -> jewellery-erp
+_tmpl = _base / "frontend" / "templates"
+if not _tmpl.exists():
+    _tmpl = pathlib.Path("frontend/templates")
+templates = Jinja2Templates(directory=str(_tmpl))
+_static = _base / "frontend" / "static"
+if _static.exists() and not os.path.exists("frontend/static"):
+    app.mount("/static", StaticFiles(directory=str(_static)), name="static")
 
 # ============================================================
 # REGISTER ALL API ROUTERS
@@ -81,6 +84,7 @@ app.include_router(reports_router)
 app.include_router(users_router)
 app.include_router(customers_router)
 app.include_router(departments_router)
+
 
 # ============================================================
 # HELPER: Get current user from cookie (for HTML pages)
@@ -100,12 +104,14 @@ def _get_page_user(request: Request, db: Session = Depends(get_db)):
         return None
     return None
 
+
 # ============================================================
 # HTML PAGE ROUTES
 # ============================================================
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
     return templates.TemplateResponse("login.html", {"request": request})
+
 
 @app.get("/", response_class=HTMLResponse)
 def dashboard_page(request: Request, db: Session = Depends(get_db)):
@@ -114,12 +120,14 @@ def dashboard_page(request: Request, db: Session = Depends(get_db)):
         return RedirectResponse("/login")
     return templates.TemplateResponse("dashboard.html", {"request": request, "user": user})
 
+
 @app.get("/jobs", response_class=HTMLResponse)
 def jobs_page(request: Request, db: Session = Depends(get_db)):
     user = _get_page_user(request, db)
     if not user:
         return RedirectResponse("/login")
     return templates.TemplateResponse("jobs.html", {"request": request, "user": user})
+
 
 @app.get("/metal", response_class=HTMLResponse)
 def metal_page(request: Request, db: Session = Depends(get_db)):
@@ -128,12 +136,14 @@ def metal_page(request: Request, db: Session = Depends(get_db)):
         return RedirectResponse("/login")
     return templates.TemplateResponse("metal.html", {"request": request, "user": user})
 
+
 @app.get("/karigar", response_class=HTMLResponse)
 def karigar_page(request: Request, db: Session = Depends(get_db)):
     user = _get_page_user(request, db)
     if not user:
         return RedirectResponse("/login")
     return templates.TemplateResponse("karigar.html", {"request": request, "user": user})
+
 
 @app.get("/scrap", response_class=HTMLResponse)
 def scrap_page(request: Request, db: Session = Depends(get_db)):
@@ -142,12 +152,14 @@ def scrap_page(request: Request, db: Session = Depends(get_db)):
         return RedirectResponse("/login")
     return templates.TemplateResponse("scrap.html", {"request": request, "user": user})
 
+
 @app.get("/refinery", response_class=HTMLResponse)
 def refinery_page(request: Request, db: Session = Depends(get_db)):
     user = _get_page_user(request, db)
     if not user:
         return RedirectResponse("/login")
     return templates.TemplateResponse("refinery.html", {"request": request, "user": user})
+
 
 @app.get("/inventory", response_class=HTMLResponse)
 def inventory_page(request: Request, db: Session = Depends(get_db)):
@@ -156,12 +168,14 @@ def inventory_page(request: Request, db: Session = Depends(get_db)):
         return RedirectResponse("/login")
     return templates.TemplateResponse("inventory.html", {"request": request, "user": user})
 
+
 @app.get("/costing", response_class=HTMLResponse)
 def costing_page(request: Request, db: Session = Depends(get_db)):
     user = _get_page_user(request, db)
     if not user:
         return RedirectResponse("/login")
     return templates.TemplateResponse("costing.html", {"request": request, "user": user})
+
 
 @app.get("/reports", response_class=HTMLResponse)
 def reports_page(request: Request, db: Session = Depends(get_db)):
@@ -170,12 +184,14 @@ def reports_page(request: Request, db: Session = Depends(get_db)):
         return RedirectResponse("/login")
     return templates.TemplateResponse("reports.html", {"request": request, "user": user})
 
+
 @app.get("/users", response_class=HTMLResponse)
 def users_page(request: Request, db: Session = Depends(get_db)):
     user = _get_page_user(request, db)
     if not user:
         return RedirectResponse("/login")
     return templates.TemplateResponse("users.html", {"request": request, "user": user})
+
 
 @app.get("/scale", response_class=HTMLResponse)
 def scale_page(request: Request, db: Session = Depends(get_db)):
@@ -184,10 +200,21 @@ def scale_page(request: Request, db: Session = Depends(get_db)):
         return RedirectResponse("/login")
     return templates.TemplateResponse("scale.html", {"request": request, "user": user})
 
+
+
+@app.get("/barcode", response_class=HTMLResponse)
+def barcode_page(request: Request, db: Session = Depends(get_db)):
+    user = _get_page_user(request, db)
+    if not user:
+        return RedirectResponse("/login")
+    return templates.TemplateResponse("barcode.html", {"request": request, "user": user})
+
+
 @app.get("/health")
 def health_check():
     """Health check endpoint for Docker/monitoring"""
     return {"status": "ok", "app": settings.APP_NAME, "version": settings.APP_VERSION}
+
 
 if __name__ == "__main__":
     import uvicorn

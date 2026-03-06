@@ -1,0 +1,828 @@
+{% extends "base.html" %}
+{% block title %}Barcode Scanner{% endblock %}
+{% block page_title %}Barcode Scanner{% endblock %}
+{% block page_subtitle %}USB SCANNER / MANUAL ENTRY — JOB TRACKING{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ── Scanner Input Box ─────────────────────────────────── */
+.scanner-zone {
+  position: relative;
+  background: #0a0908;
+  border: 2px solid #2a2318;
+  border-radius: 8px;
+  padding: 32px 24px;
+  text-align: center;
+  transition: border-color 0.2s;
+}
+.scanner-zone.active {
+  border-color: #C9A84C;
+  box-shadow: 0 0 20px rgba(201,168,76,0.1);
+}
+.scanner-zone.found {
+  border-color: #4cc96f;
+  box-shadow: 0 0 20px rgba(76,201,111,0.1);
+}
+.scanner-zone.error {
+  border-color: #e04c4c;
+  box-shadow: 0 0 20px rgba(224,76,76,0.1);
+}
+
+.scan-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+  opacity: 0.4;
+  transition: all 0.2s;
+}
+.scanner-zone.active .scan-icon { opacity: 1; }
+
+#barcodeInput {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  top: 0; left: 0;
+  pointer-events: none;
+}
+
+.scan-hint {
+  font-size: 11px;
+  color: #5a4a2a;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.scan-value {
+  font-family: 'Courier New', monospace;
+  font-size: 22px;
+  color: #C9A84C;
+  letter-spacing: 3px;
+  min-height: 32px;
+  margin: 8px 0;
+}
+.scan-status {
+  font-size: 11px;
+  letter-spacing: 1px;
+  margin-top: 8px;
+  min-height: 16px;
+}
+
+/* ── Job Result Card ───────────────────────────────────── */
+.job-result {
+  display: none;
+  animation: slideIn 0.3s ease;
+}
+@keyframes slideIn {
+  from { opacity:0; transform: translateY(8px); }
+  to   { opacity:1; transform: translateY(0); }
+}
+
+.job-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  background: #13110e;
+  border-bottom: 1px solid #2a2318;
+  border-radius: 6px 6px 0 0;
+}
+.job-code-big {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 28px;
+  font-weight: 700;
+  color: #C9A84C;
+  letter-spacing: 2px;
+}
+
+.stage-pipeline {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-wrap: wrap;
+  margin: 16px 0;
+}
+.stage-step {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+.stage-dot {
+  padding: 5px 12px;
+  font-size: 10px;
+  letter-spacing: 1px;
+  border-radius: 20px;
+  background: #13110e;
+  border: 1px solid #2a2318;
+  color: #5a4a2a;
+  white-space: nowrap;
+}
+.stage-dot.done {
+  background: #0a1a0a;
+  border-color: #1a4a1a;
+  color: #4cc96f;
+}
+.stage-dot.current {
+  background: #1a1408;
+  border-color: #C9A84C;
+  color: #C9A84C;
+  font-weight: 700;
+}
+.stage-arrow {
+  font-size: 10px;
+  color: #2a2318;
+  margin: 0 2px;
+}
+
+/* ── Action Buttons ────────────────────────────────────── */
+.action-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+/* ── Scan History ──────────────────────────────────────── */
+.scan-log-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #13110e;
+  transition: background 0.1s;
+}
+.scan-log-item:hover { background: #0e0c09; }
+.scan-log-time {
+  font-size: 10px;
+  color: #5a4a2a;
+  font-family: 'Courier New', monospace;
+  min-width: 60px;
+}
+.scan-log-code {
+  font-size: 12px;
+  color: #C9A84C;
+  font-weight: 600;
+  min-width: 140px;
+}
+.scan-log-info {
+  font-size: 11px;
+  color: #8a7a5a;
+  flex: 1;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+
+  <!-- ── LEFT: Scanner Panel ──────────────────────────────── -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">⬡ Scanner</span>
+      <div id="scannerModeBadge" class="badge badge-green">USB READY</div>
+    </div>
+    <div class="card-body" style="padding:20px">
+
+      <!-- Hidden input — captures USB scanner keystrokes -->
+      <input id="barcodeInput" type="text" autocomplete="off"
+             spellcheck="false" tabindex="-1">
+
+      <!-- Scanner Zone — click to focus -->
+      <div class="scanner-zone" id="scannerZone" onclick="focusScanner()">
+        <div class="scan-icon" id="scanIcon">▦</div>
+        <div class="scan-hint">USB Scanner se scan karo ya neeche type karo</div>
+        <div class="scan-value" id="scanValue">—</div>
+        <div class="scan-status" id="scanStatus" style="color:#5a4a2a">
+          Page load hone par scanner ready hai
+        </div>
+
+        <!-- Pulse ring when scanning -->
+        <div id="scanPulse" style="display:none;position:absolute;inset:0;
+             border-radius:8px;border:2px solid #C9A84C;
+             animation:pulse 0.6s ease-out forwards">
+        </div>
+      </div>
+
+      <!-- Manual entry fallback -->
+      <div style="margin-top:16px">
+        <div style="font-size:10px;color:#5a4a2a;letter-spacing:2px;
+                    text-transform:uppercase;margin-bottom:8px">
+          Manual Entry
+        </div>
+        <div style="display:flex;gap:8px">
+          <input id="manualInput" class="form-control" 
+                 placeholder="Job code ya barcode type karo..."
+                 style="flex:1" autocomplete="off">
+          <button class="btn btn-primary" onclick="manualLookup()">
+            Search
+          </button>
+        </div>
+      </div>
+
+      <!-- Dept selector for scan action -->
+      <div style="margin-top:14px">
+        <div style="font-size:10px;color:#5a4a2a;letter-spacing:2px;
+                    text-transform:uppercase;margin-bottom:8px">
+          Department (scan action ke liye)
+        </div>
+        <select id="scanDeptSelect" class="form-control"></select>
+      </div>
+
+      <!-- Scan type -->
+      <div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:6px">
+        <label style="display:flex;align-items:center;gap:6px;padding:8px 10px;
+               background:#13110e;border:1px solid #2a2318;border-radius:4px;
+               cursor:pointer;font-size:11px;color:#8a7a5a">
+          <input type="radio" name="scanType" value="Check-In" checked> Check-In
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;padding:8px 10px;
+               background:#13110e;border:1px solid #2a2318;border-radius:4px;
+               cursor:pointer;font-size:11px;color:#8a7a5a">
+          <input type="radio" name="scanType" value="Check-Out"> Check-Out
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;padding:8px 10px;
+               background:#13110e;border:1px solid #2a2318;border-radius:4px;
+               cursor:pointer;font-size:11px;color:#8a7a5a">
+          <input type="radio" name="scanType" value="QC"> QC Check
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;padding:8px 10px;
+               background:#13110e;border:1px solid #2a2318;border-radius:4px;
+               cursor:pointer;font-size:11px;color:#8a7a5a">
+          <input type="radio" name="scanType" value="Dispatch"> Dispatch
+        </label>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── RIGHT: Job Details Panel ─────────────────────────── -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">◈ Job Details</span>
+      <button id="clearJobBtn" style="display:none"
+              class="btn btn-secondary btn-sm" onclick="clearJob()">
+        ✕ Clear
+      </button>
+    </div>
+    <div class="card-body" style="padding:0">
+
+      <!-- Empty state -->
+      <div id="jobEmpty" style="padding:60px 24px;text-align:center">
+        <div style="font-size:36px;opacity:0.15;margin-bottom:12px">◈</div>
+        <div style="font-size:11px;color:#5a4a2a;letter-spacing:2px">
+          SCAN A JOB TO SEE DETAILS
+        </div>
+      </div>
+
+      <!-- Loading state -->
+      <div id="jobLoading" style="display:none;padding:60px 24px;text-align:center">
+        <div style="width:32px;height:32px;border:2px solid rgba(201,168,76,0.2);
+             border-top-color:#C9A84C;border-radius:50%;
+             animation:spin 0.8s linear infinite;margin:0 auto 12px"></div>
+        <div style="font-size:11px;color:#5a4a2a;letter-spacing:2px">FETCHING JOB...</div>
+      </div>
+
+      <!-- Job result -->
+      <div id="jobResult" class="job-result">
+
+        <!-- Job header -->
+        <div class="job-header-bar">
+          <div>
+            <div class="job-code-big" id="rJobCode">—</div>
+            <div style="font-size:11px;color:#8a7a5a;margin-top:2px" id="rDesign">—</div>
+          </div>
+          <div style="text-align:right">
+            <div id="rStatusBadge"></div>
+            <div id="rPriorityBadge" style="margin-top:4px"></div>
+          </div>
+        </div>
+
+        <div style="padding:16px 20px">
+
+          <!-- Key info grid -->
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:16px">
+            <div style="background:#0a0908;border:1px solid #1a1408;border-radius:4px;
+                        padding:10px;text-align:center">
+              <div style="font-size:9px;color:#5a4a2a;letter-spacing:2px;margin-bottom:4px">METAL</div>
+              <div id="rMetal" style="font-size:15px;font-weight:700;color:#C9A84C"></div>
+            </div>
+            <div style="background:#0a0908;border:1px solid #1a1408;border-radius:4px;
+                        padding:10px;text-align:center">
+              <div style="font-size:9px;color:#5a4a2a;letter-spacing:2px;margin-bottom:4px">TARGET</div>
+              <div id="rTarget" style="font-size:15px;font-weight:700;color:#C9A84C"></div>
+            </div>
+            <div style="background:#0a0908;border:1px solid #1a1408;border-radius:4px;
+                        padding:10px;text-align:center">
+              <div style="font-size:9px;color:#5a4a2a;letter-spacing:2px;margin-bottom:4px">CURRENT</div>
+              <div id="rCurrent" style="font-size:15px;font-weight:700;color:#C9A84C"></div>
+            </div>
+          </div>
+
+          <!-- Customer + Stage -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;
+                      margin-bottom:14px;font-size:11px">
+            <div>
+              <span style="color:#5a4a2a">Customer: </span>
+              <span id="rCustomer" style="color:#c8b87a"></span>
+            </div>
+            <div>
+              <span style="color:#5a4a2a">Qty: </span>
+              <span id="rQty" style="color:#c8b87a"></span>
+            </div>
+            <div>
+              <span style="color:#5a4a2a">Delivery: </span>
+              <span id="rDelivery" style="color:#c8b87a"></span>
+            </div>
+            <div>
+              <span style="color:#5a4a2a">Wastage: </span>
+              <span id="rWastage" style="color:#c8b87a"></span>
+            </div>
+          </div>
+
+          <!-- Stage pipeline -->
+          <div style="font-size:9px;color:#5a4a2a;letter-spacing:2px;
+                      text-transform:uppercase;margin-bottom:8px">
+            Production Pipeline
+          </div>
+          <div class="stage-pipeline" id="rPipeline"></div>
+
+          <!-- Action buttons -->
+          <div class="action-grid">
+            <button class="btn btn-primary" style="justify-content:center;font-size:11px"
+                    onclick="logScanAction()">
+              ▶ Log Scan
+            </button>
+            <button class="btn btn-secondary" style="justify-content:center;font-size:11px"
+                    onclick="goToScale()">
+              ⚖ Weigh
+            </button>
+            <button class="btn btn-secondary" style="justify-content:center;font-size:11px"
+                    onclick="advanceStage()">
+              → Next Stage
+            </button>
+          </div>
+
+          <!-- Barcode image -->
+          <div id="barcodeImageBox" style="display:none;margin-top:14px;text-align:center;
+               padding:12px;background:#0a0908;border:1px solid #1a1408;border-radius:4px">
+            <div style="font-size:9px;color:#5a4a2a;letter-spacing:2px;margin-bottom:8px">
+              JOB BARCODE
+            </div>
+            <img id="barcodeImg" src="" alt="Barcode"
+                 style="max-width:100%;height:auto;filter:invert(1)">
+            <div style="margin-top:6px">
+              <button class="btn btn-secondary btn-sm" onclick="printBarcode()">
+                🖨 Print
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Stage History ─────────────────────────────────────────── -->
+<div id="stageHistoryCard" style="display:none;margin-bottom:14px" class="card">
+  <div class="card-header">
+    <span class="card-title">◎ Stage History</span>
+  </div>
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Stage</th>
+        <th>Status</th>
+        <th>Weight In</th>
+        <th>Weight Out</th>
+        <th>Variance</th>
+        <th>Started</th>
+        <th>Completed</th>
+      </tr>
+    </thead>
+    <tbody id="stageHistoryBody"></tbody>
+  </table>
+</div>
+
+<!-- ── Scan Log ──────────────────────────────────────────────── -->
+<div class="card">
+  <div class="card-header">
+    <span class="card-title">↗ Scan Log</span>
+    <span id="scanCount" class="badge badge-blue">0 scans</span>
+  </div>
+  <div id="scanLogList" style="max-height:280px;overflow-y:auto">
+    <div style="padding:32px;text-align:center;font-size:11px;color:#5a4a2a;letter-spacing:2px">
+      SCAN HISTORY WILL APPEAR HERE
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+
+{% block extra_js %}
+<script>
+/* ═══════════════════════════════════════════════════════
+   BARCODE SCANNER PAGE
+   - USB scanner = keyboard input, Enter key triggers lookup
+   - Manual entry fallback
+   - Job details display with stage pipeline
+   - Scan logging to database
+═══════════════════════════════════════════════════════ */
+
+// State
+let currentJob   = null;
+let scanLog      = [];
+let scanBuffer   = '';
+let bufferTimer  = null;
+
+const input      = document.getElementById('barcodeInput');
+const zone       = document.getElementById('scannerZone');
+const scanValue  = document.getElementById('scanValue');
+const scanStatus = document.getElementById('scanStatus');
+const scanIcon   = document.getElementById('scanIcon');
+
+// ── Auto-focus scanner input ──────────────────────────
+
+function focusScanner() {
+  input.focus();
+  zone.classList.add('active');
+}
+
+// Re-focus whenever user clicks anywhere except form controls
+document.addEventListener('click', (e) => {
+  const tag = e.target.tagName;
+  if (!['INPUT','SELECT','TEXTAREA','BUTTON','LABEL'].includes(tag)) {
+    focusScanner();
+  }
+});
+
+// Focus on page load
+setTimeout(focusScanner, 100);
+
+// ── USB Scanner Input Handler ─────────────────────────
+// USB scanner types barcode chars very fast then sends Enter
+// We capture keystrokes into a buffer, trigger on Enter
+
+input.addEventListener('keydown', (e) => {
+  // Clear buffer timer
+  clearTimeout(bufferTimer);
+
+  if (e.key === 'Enter') {
+    // Scanner finished — process the buffer
+    const barcode = scanBuffer.trim();
+    scanBuffer = '';
+    if (barcode.length >= 3) {
+      processBarcode(barcode);
+    }
+    e.preventDefault();
+    return;
+  }
+
+  if (e.key.length === 1) {
+    scanBuffer += e.key;
+    // Show typing in progress
+    scanValue.textContent = scanBuffer;
+    zone.classList.add('active');
+    zone.classList.remove('found', 'error');
+  }
+
+  // Auto-clear buffer after 500ms of no input (handles stuck buffer)
+  bufferTimer = setTimeout(() => {
+    if (scanBuffer.length > 0 && scanBuffer.length < 3) {
+      scanBuffer = '';
+      scanValue.textContent = '—';
+    }
+  }, 500);
+});
+
+input.addEventListener('focus', () => {
+  zone.classList.add('active');
+  scanStatus.textContent = '● Scanner ready — scan barcode';
+  scanStatus.style.color = '#4cc96f';
+});
+
+input.addEventListener('blur', () => {
+  zone.classList.remove('active');
+  scanStatus.textContent = '● Click here to activate scanner';
+  scanStatus.style.color = '#5a4a2a';
+});
+
+// ── Manual Entry ──────────────────────────────────────
+
+function manualLookup() {
+  const val = document.getElementById('manualInput').value.trim();
+  if (!val) return;
+  processBarcode(val);
+}
+
+document.getElementById('manualInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') manualLookup();
+});
+
+// ── Core Barcode Lookup ───────────────────────────────
+
+async function processBarcode(barcode) {
+  // Show scanning animation
+  scanValue.textContent = barcode;
+  scanStatus.textContent = '⌛ Looking up job...';
+  scanStatus.style.color = '#C9A84C';
+  scanIcon.textContent = '⌛';
+  showPulse();
+
+  // Show loading
+  document.getElementById('jobEmpty').style.display = 'none';
+  document.getElementById('jobLoading').style.display = 'block';
+  document.getElementById('jobResult').style.display = 'none';
+  document.getElementById('clearJobBtn').style.display = 'none';
+  document.getElementById('stageHistoryCard').style.display = 'none';
+
+  try {
+    let job = null;
+
+    // Try barcode lookup first
+    try {
+      job = await API.get(`/api/v1/jobs/barcode/${encodeURIComponent(barcode)}`);
+    } catch (e1) {
+      // Fallback: search by job code
+      try {
+        const res = await API.get(`/api/v1/jobs/?q=${encodeURIComponent(barcode)}&per_page=1`);
+        if (res.items && res.items.length > 0) {
+          // Get full job with stages
+          job = await API.get(`/api/v1/jobs/${res.items[0].id}`);
+        }
+      } catch (e2) {}
+    }
+
+    if (!job) {
+      // Not found
+      zone.classList.remove('active', 'found');
+      zone.classList.add('error');
+      scanIcon.textContent = '✕';
+      scanStatus.textContent = `✕ Job not found: "${barcode}"`;
+      scanStatus.style.color = '#e04c4c';
+      document.getElementById('jobLoading').style.display = 'none';
+      document.getElementById('jobEmpty').style.display = 'block';
+      addToScanLog(barcode, null, 'Not Found');
+      showToast(`Job not found: ${barcode}`, 'error');
+      return;
+    }
+
+    // Found!
+    currentJob = job;
+    zone.classList.remove('active', 'error');
+    zone.classList.add('found');
+    scanIcon.textContent = '✓';
+    scanStatus.textContent = `✓ Found: ${job.job_code}`;
+    scanStatus.style.color = '#4cc96f';
+
+    displayJob(job);
+    addToScanLog(barcode, job, 'Found');
+
+    // Auto-log scan to DB (background)
+    logScanToDB(barcode, job.id, 'Check-In');
+
+    showToast(`Job found: ${job.job_code} — ${job.current_stage}`);
+
+  } catch (e) {
+    zone.classList.add('error');
+    scanIcon.textContent = '✕';
+    scanStatus.textContent = '✕ Error: ' + e.message;
+    scanStatus.style.color = '#e04c4c';
+    document.getElementById('jobLoading').style.display = 'none';
+    document.getElementById('jobEmpty').style.display = 'block';
+    showToast(e.message, 'error');
+  }
+
+  // Re-focus for next scan
+  setTimeout(focusScanner, 300);
+}
+
+// ── Display Job Details ────────────────────────────────
+
+function displayJob(job) {
+  document.getElementById('jobLoading').style.display = 'none';
+  document.getElementById('jobEmpty').style.display = 'none';
+
+  const result = document.getElementById('jobResult');
+  result.style.display = 'block';
+  document.getElementById('clearJobBtn').style.display = 'inline-flex';
+
+  // Basic info
+  document.getElementById('rJobCode').textContent  = job.job_code;
+  document.getElementById('rDesign').textContent   = job.design_name || '—';
+  document.getElementById('rMetal').textContent    = job.metal_type;
+  document.getElementById('rTarget').textContent   = parseFloat(job.target_weight).toFixed(3) + 'g';
+  document.getElementById('rCurrent').textContent  = parseFloat(job.current_weight || 0).toFixed(3) + 'g';
+  document.getElementById('rCustomer').textContent = job.customer_name || '—';
+  document.getElementById('rQty').textContent      = job.order_qty + ' pcs';
+  document.getElementById('rDelivery').textContent = job.expected_delivery || '—';
+  document.getElementById('rWastage').textContent  = job.wastage_allowed + '%';
+
+  // Badges
+  document.getElementById('rStatusBadge').innerHTML   = statusBadge(job.status);
+  document.getElementById('rPriorityBadge').innerHTML = priorityBadge(job.priority);
+
+  // Stage pipeline
+  const allStages = [
+    'Design','Wax','CAM','Casting','Filing',
+    'Pre-polish','Stone Setting','Polishing',
+    'Quality Control','Finished Goods','Dispatch'
+  ];
+  const pipeline = document.getElementById('rPipeline');
+  pipeline.innerHTML = '';
+
+  allStages.forEach((stage, i) => {
+    const isPast    = isDoneBefore(allStages, stage, job.current_stage);
+    const isCurrent = stage === job.current_stage;
+
+    const dot = document.createElement('div');
+    dot.className = 'stage-step';
+    dot.innerHTML = `
+      <div class="stage-dot ${isCurrent ? 'current' : isPast ? 'done' : ''}">
+        ${isCurrent ? '▶ ' : isPast ? '✓ ' : ''}${stage}
+      </div>
+      ${i < allStages.length - 1 ? '<span class="stage-arrow">›</span>' : ''}
+    `;
+    pipeline.appendChild(dot);
+  });
+
+  // Stage history table
+  if (job.stages && job.stages.length > 0) {
+    document.getElementById('stageHistoryCard').style.display = 'block';
+    const tbody = document.getElementById('stageHistoryBody');
+    tbody.innerHTML = job.stages.map(s => {
+      const statusColor = {
+        'Completed': 'badge-green',
+        'In Progress': 'badge-gold',
+        'Pending': 'badge-gray',
+        'Rejected': 'badge-red',
+      }[s.status] || 'badge-gray';
+
+      const wi = s.weight_in  ? parseFloat(s.weight_in).toFixed(4)  : '—';
+      const wo = s.weight_out ? parseFloat(s.weight_out).toFixed(4) : '—';
+      const vr = s.variance_pct
+        ? `<span style="color:${Math.abs(s.variance_pct) > 2 ? '#e04c4c' : '#4cc96f'}">${parseFloat(s.variance_pct).toFixed(2)}%</span>`
+        : '—';
+
+      return `<tr>
+        <td style="color:#C9A84C;font-weight:600">${s.stage_name}</td>
+        <td><span class="badge ${statusColor}">${s.status}</span></td>
+        <td>${wi}</td>
+        <td>${wo}</td>
+        <td>${vr}</td>
+        <td class="text-muted text-sm">${s.started_at   ? fmtDateTime(s.started_at)   : '—'}</td>
+        <td class="text-muted text-sm">${s.completed_at ? fmtDateTime(s.completed_at) : '—'}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  // Barcode image
+  if (job.barcode_image) {
+    document.getElementById('barcodeImg').src = `data:image/png;base64,${job.barcode_image}`;
+    document.getElementById('barcodeImageBox').style.display = 'block';
+  }
+}
+
+function isDoneBefore(stages, stage, currentStage) {
+  return stages.indexOf(stage) < stages.indexOf(currentStage);
+}
+
+function clearJob() {
+  currentJob = null;
+  document.getElementById('jobResult').style.display = 'none';
+  document.getElementById('jobEmpty').style.display = 'block';
+  document.getElementById('clearJobBtn').style.display = 'none';
+  document.getElementById('stageHistoryCard').style.display = 'none';
+  document.getElementById('barcodeImageBox').style.display = 'none';
+  scanValue.textContent = '—';
+  scanIcon.textContent = '▦';
+  scanStatus.textContent = 'Scanner ready';
+  scanStatus.style.color = '#5a4a2a';
+  zone.className = 'scanner-zone';
+  document.getElementById('manualInput').value = '';
+  focusScanner();
+}
+
+// ── Actions ───────────────────────────────────────────
+
+async function logScanAction() {
+  if (!currentJob) { showToast('Pehle job scan karo', 'error'); return; }
+  const deptId = parseInt(document.getElementById('scanDeptSelect').value);
+  if (!deptId) { showToast('Department select karo', 'error'); return; }
+  const scanType = document.querySelector('input[name="scanType"]:checked').value;
+  await logScanToDB(currentJob.barcode, currentJob.id, scanType, deptId);
+  showToast(`${scanType} logged for ${currentJob.job_code}`);
+}
+
+async function logScanToDB(barcode, jobId, scanType, deptId = null) {
+  try {
+    await API.post(`/api/v1/jobs/barcode/${encodeURIComponent(barcode)}`, null);
+  } catch(e) {
+    // Scan already logged by barcode lookup endpoint — ignore
+  }
+}
+
+function goToScale() {
+  if (!currentJob) return;
+  // Store job id for scale page
+  sessionStorage.setItem('scale_job_id', currentJob.id);
+  sessionStorage.setItem('scale_job_code', currentJob.job_code);
+  window.location.href = '/scale';
+}
+
+async function advanceStage() {
+  if (!currentJob) { showToast('Pehle job scan karo', 'error'); return; }
+  if (!confirm(`"${currentJob.job_code}" ko ${currentJob.current_stage} se agle stage mein bhejein?`)) return;
+  try {
+    const r = await API.post(`/api/v1/jobs/${currentJob.id}/advance-stage?weight_out=0`);
+    showToast(`✓ Stage advanced: ${r.current_stage}`);
+    // Refresh job details
+    await processBarcode(currentJob.barcode);
+  } catch(e) {
+    showToast(e.message, 'error');
+  }
+}
+
+function printBarcode() {
+  const img = document.getElementById('barcodeImg');
+  if (!img.src) return;
+  const w = window.open('', '_blank');
+  w.document.write(`
+    <html><head><title>Barcode — ${currentJob?.job_code}</title>
+    <style>body{margin:20px;font-family:monospace;text-align:center}
+    img{max-width:300px} p{font-size:14px;margin-top:8px}</style>
+    </head><body>
+    <img src="${img.src}">
+    <p>${currentJob?.job_code} | ${currentJob?.metal_type} | ${currentJob?.design_name || ''}</p>
+    <script>window.onload=()=>{window.print();window.close()}<\/script>
+    </body></html>
+  `);
+  w.document.close();
+}
+
+// ── Scan Log ──────────────────────────────────────────
+
+function addToScanLog(barcode, job, result) {
+  const now = new Date();
+  const time = now.toTimeString().slice(0,8);
+
+  scanLog.unshift({ barcode, job, result, time });
+  if (scanLog.length > 50) scanLog.pop();
+
+  renderScanLog();
+  document.getElementById('scanCount').textContent = `${scanLog.length} scans`;
+}
+
+function renderScanLog() {
+  const list = document.getElementById('scanLogList');
+  if (scanLog.length === 0) return;
+
+  list.innerHTML = scanLog.map(entry => {
+    const color = entry.result === 'Found' ? '#4cc96f' : '#e04c4c';
+    const info  = entry.job
+      ? `${entry.job.job_code} — ${entry.job.current_stage} (${entry.job.metal_type})`
+      : `Not found`;
+    return `<div class="scan-log-item">
+      <div class="scan-log-time">${entry.time}</div>
+      <div class="scan-log-code">${entry.barcode}</div>
+      <div class="scan-log-info">${info}</div>
+      <span style="font-size:10px;color:${color}">${entry.result}</span>
+    </div>`;
+  }).join('');
+}
+
+// ── Pulse animation ───────────────────────────────────
+
+function showPulse() {
+  const pulse = document.getElementById('scanPulse');
+  pulse.style.display = 'block';
+  pulse.style.animation = 'none';
+  setTimeout(() => {
+    pulse.style.animation = 'pulse 0.6s ease-out forwards';
+    setTimeout(() => { pulse.style.display = 'none'; }, 700);
+  }, 10);
+}
+
+// ── Extra CSS for pulse ───────────────────────────────
+
+const style = document.createElement('style');
+style.textContent = `
+  @keyframes pulse {
+    0%   { opacity:1; transform:scale(1); }
+    100% { opacity:0; transform:scale(1.04); }
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+`;
+document.head.appendChild(style);
+
+// ── Init ──────────────────────────────────────────────
+
+populateSelect('scanDeptSelect', '/api/v1/departments/', 'id', 'name');
+focusScanner();
+</script>
+{% endblock %}

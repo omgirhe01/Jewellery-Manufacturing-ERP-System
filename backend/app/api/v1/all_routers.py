@@ -165,7 +165,7 @@ def create_job(
 
     job_code = generate_job_code(db)
     barcode_val = generate_barcode_value(job_code, data.metal_type, data.order_qty)
-    barcode_img = barcode_service.generate_job_barcode(job_code)
+    _, barcode_img = barcode_service.generate_job_barcode(job_code)
 
     job = Job(
         job_code=job_code,
@@ -416,26 +416,65 @@ def _job_dict(job: Job, include_stages=False, include_barcode=False) -> dict:
 
 
 # ============================================================
-# SCALE ROUTER
+# SCALE ROUTER — Production Ready (RS232 + Simulation)
 # ============================================================
 scale_router = APIRouter(prefix="/api/v1/scale", tags=["Weighing Scale"])
 
 
 @scale_router.get("/status")
-def scale_status(current_user: User = Depends(get_current_user)):
-    """Get scale connection status"""
-    return scale_service.get_status()
+async def scale_status(current_user: User = Depends(get_current_user)):
+    """Get scale connection status, mode, tare, last reading"""
+    return await scale_service.get_status()
 
 
 @scale_router.post("/read-weight")
 async def read_weight(
-    expected_weight: float = Query(10.0, description="Expected weight for simulation variance"),
-    db: Session = Depends(get_db),
+    expected_weight: float = Query(10.0, description="Expected weight (used in simulation)"),
     current_user: User = Depends(get_current_user)
 ):
-    """Read weight from scale (or simulation)"""
+    """
+    Read weight from scale.
+    - Waits for STABLE reading (critical for gold accuracy)
+    - Returns gross, net, tare, stable flag, attempts count
+    """
     result = await scale_service.read_weight(expected_weight)
     return result
+
+
+@scale_router.post("/tare")
+async def set_tare(
+    tare_value: Optional[float] = Query(None, description="Tare value in grams. If not given, reads scale now."),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Set tare weight.
+    - Pass tare_value to set directly
+    - Pass nothing to read scale now and use as tare
+    """
+    if tare_value is not None:
+        scale_service.set_tare(tare_value)
+        return {"message": f"Tare set to {tare_value}g", "tare": tare_value}
+    else:
+        reading = await scale_service.read_weight()
+        tare = reading.get("gross_weight", 0.0)
+        scale_service.set_tare(tare)
+        return {"message": f"Tare set from scale: {tare}g", "tare": tare}
+
+
+@scale_router.post("/clear-tare")
+async def clear_tare(current_user: User = Depends(get_current_user)):
+    """Clear tare weight back to zero"""
+    scale_service.clear_tare()
+    return {"message": "Tare cleared", "tare": 0.0}
+
+
+@scale_router.get("/detect-port")
+async def detect_port(current_user: User = Depends(get_current_user)):
+    """
+    List all available COM/serial ports on server PC.
+    Useful to find which port the RS232 scale is connected to.
+    """
+    return await scale_service.detect_port()
 
 
 @scale_router.post("/log-weight")
@@ -449,8 +488,15 @@ async def log_weight(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Log a weight reading for a job stage"""
+    """
+    Log a confirmed weight reading against a job + department.
+    Only STABLE readings should be passed here from frontend.
+    """
     net_weight = round(gross_weight - tare_weight, 4)
+
+    scale_mode = "Manual" if is_manual else (
+        "Simulation" if scale_service.simulation_mode else "RS232"
+    )
 
     log = WeightLog(
         job_id=job_id,
@@ -459,14 +505,22 @@ async def log_weight(
         gross_weight=gross_weight,
         tare_weight=tare_weight,
         net_weight=net_weight,
-        scale_type="Manual" if is_manual else "Simulation",
+        scale_type=scale_mode,
         is_manual_override=is_manual,
         operator_id=current_user.id
     )
     db.add(log)
     db.commit()
+    db.refresh(log)
 
-    return {"message": "Weight logged", "net_weight": net_weight, "log_id": log.id}
+    return {
+        "message": "Weight logged successfully",
+        "log_id": log.id,
+        "gross_weight": gross_weight,
+        "tare_weight": tare_weight,
+        "net_weight": net_weight,
+        "scale_type": scale_mode,
+    }
 
 
 @scale_router.get("/history/{job_id}")
@@ -475,7 +529,7 @@ def weight_history(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Get all weight logs for a job"""
+    """All weight logs for a job, newest first"""
     logs = db.query(WeightLog).filter(
         WeightLog.job_id == job_id
     ).order_by(WeightLog.captured_at.desc()).all()
@@ -488,7 +542,7 @@ def weight_history(
             "net_weight": float(l.net_weight),
             "scale_type": l.scale_type,
             "is_manual": l.is_manual_override,
-            "captured_at": l.captured_at.isoformat() if l.captured_at else None
+            "captured_at": l.captured_at.isoformat() if l.captured_at else None,
         }
         for l in logs
     ]

@@ -1,191 +1,704 @@
 {% extends "base.html" %}
-{% block title %}Scale{% endblock %}
+{% block title %}Weighing Scale{% endblock %}
 {% block page_title %}Weighing Scale{% endblock %}
-{% block page_subtitle %}LIVE WEIGHT CAPTURE & SIMULATION{% endblock %}
+{% block page_subtitle %}PRECISION WEIGHT CAPTURE — GOLD ACCURACY 0.001g{% endblock %}
+
 {% block content %}
 
-<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">
+<!-- ═══════════════════════════════════════════════════════════
+     TOP ROW: Scale Display + Job Entry
+══════════════════════════════════════════════════════════════ -->
+<div style="display:grid;grid-template-columns:1.1fr 0.9fr;gap:14px;margin-bottom:14px">
 
-  <!-- Scale Display -->
+  <!-- ── Scale Live Display ─────────────────────────────────── -->
   <div class="card">
     <div class="card-header">
-      <span class="card-title">Scale Display</span>
-      <div id="scaleStatusBadge" class="badge badge-green">SIMULATION</div>
-    </div>
-    <div class="card-body" style="text-align:center;padding:32px">
-      <div style="font-family:'Cormorant Garamond',serif;font-size:64px;font-weight:700;color:#C9A84C;letter-spacing:0.06em;line-height:1" id="weightDisplay">
-        ---.---
+      <span class="card-title">⚖ Scale Display</span>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div id="stableLight" class="stable-light unstable"></div>
+        <div id="scaleModeBadge" class="badge badge-blue">CHECKING...</div>
       </div>
-      <div style="font-size:14px;color:#8a7a5a;margin-top:8px">grams</div>
-      <div id="stableIndicator" style="margin-top:12px;font-size:11px;color:#5a4a2a">Not reading</div>
+    </div>
+    <div class="card-body" style="padding:20px 24px">
 
-      <div style="margin-top:24px;display:flex;gap:10px;justify-content:center">
-        <button class="btn btn-primary" onclick="readWeight()">⚖ Read Weight</button>
-        <button class="btn btn-secondary" onclick="tareScale()">Tare</button>
-        <button class="btn btn-secondary" onclick="clearWeight()">Clear</button>
+      <!-- Main weight readout -->
+      <div id="weightPanel" style="text-align:center;padding:28px 0 20px;position:relative">
+        <div style="font-size:10px;color:#5a4a2a;letter-spacing:3px;text-transform:uppercase;margin-bottom:6px">
+          NET WEIGHT
+        </div>
+        <div id="weightDisplay" class="weight-display">
+          ---.----
+        </div>
+        <div style="font-size:16px;color:#8a7a5a;margin-top:4px;letter-spacing:2px">GRAMS</div>
+        <div id="stableLabel" style="margin-top:10px;font-size:11px;color:#5a4a2a;letter-spacing:1px">
+          ● WAITING FOR READING
+        </div>
+
+        <!-- Overlay shown when reading -->
+        <div id="readingOverlay" style="display:none;position:absolute;inset:0;background:rgba(10,9,7,0.85);
+             display:none;align-items:center;justify-content:center;border-radius:8px;flex-direction:column;gap:10px">
+          <div class="spin-ring"></div>
+          <div id="readingMsg" style="font-size:11px;color:#C9A84C;letter-spacing:2px">WAITING FOR STABLE...</div>
+        </div>
+      </div>
+
+      <!-- Tare + Gross info bar -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:16px">
+        <div class="mini-stat">
+          <div class="mini-label">GROSS</div>
+          <div id="grossDisplay" class="mini-value">0.0000</div>
+          <div class="mini-unit">g</div>
+        </div>
+        <div class="mini-stat">
+          <div class="mini-label">TARE</div>
+          <div id="tareDisplay" class="mini-value gold">0.0000</div>
+          <div class="mini-unit">g</div>
+        </div>
+        <div class="mini-stat">
+          <div class="mini-label">ATTEMPTS</div>
+          <div id="attemptsDisplay" class="mini-value">—</div>
+          <div class="mini-unit">polls</div>
+        </div>
+      </div>
+
+      <!-- Buttons -->
+      <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px">
+        <button id="readBtn" class="btn btn-primary" style="justify-content:center;font-size:13px" onclick="readWeight()">
+          ⚖ Read Weight
+        </button>
+        <button class="btn btn-secondary" onclick="setTare()" title="Set current reading as tare">
+          ⊘ Tare
+        </button>
+        <button class="btn btn-secondary" onclick="clearAll()" title="Clear reading">
+          ✕ Clear
+        </button>
+      </div>
+
+      <!-- Warning: Unstable -->
+      <div id="unstableWarn" style="display:none;margin-top:12px;padding:10px 12px;
+           background:#2a1a0a;border:1px solid #6a3a0a;border-radius:4px;
+           font-size:11px;color:#e07b3b;letter-spacing:0.5px">
+        ⚠ Scale reading is UNSTABLE — place item carefully, avoid vibrations, wait for stable signal
+      </div>
+
+      <!-- Raw line from scale -->
+      <div id="rawLineBox" style="display:none;margin-top:10px;padding:8px 10px;
+           background:#0a0908;border:1px solid #2a1a08;border-radius:4px;
+           font-family:'Courier New',monospace;font-size:10px;color:#5a4a2a">
+        RAW: <span id="rawLine">—</span>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Log Weight to Job ───────────────────────────────────── -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">📋 Log to Job</span>
+      <span id="jobFoundBadge" style="display:none" class="badge badge-green">JOB FOUND</span>
+    </div>
+    <div class="card-body">
+
+      <!-- Job barcode/code input — auto-focus for USB scanner -->
+      <div class="form-group">
+        <label class="form-label">Job Barcode / Code</label>
+        <div style="position:relative">
+          <input id="jobBarcodeInput" class="form-control" 
+                 placeholder="Scan barcode or type job code..."
+                 autocomplete="off" spellcheck="false"
+                 style="padding-right:32px">
+          <span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);
+                       font-size:14px;cursor:pointer" onclick="clearJobInput()" title="Clear">✕</span>
+        </div>
+        <div id="jobInfo" style="margin-top:6px;display:none;padding:8px 10px;
+             background:#13110e;border:1px solid #2a2318;border-radius:4px">
+          <div id="jobInfoLine1" style="font-size:11px;color:#C9A84C;font-weight:600"></div>
+          <div id="jobInfoLine2" style="font-size:10px;color:#8a7a5a;margin-top:2px"></div>
+        </div>
+      </div>
+
+      <!-- Department -->
+      <div class="form-group">
+        <label class="form-label">Department / Stage</label>
+        <select id="logDeptSelect" class="form-control"></select>
+      </div>
+
+      <!-- Weight type -->
+      <div class="form-group">
+        <label class="form-label">Entry Type</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+          <label class="toggle-opt" id="opt_in">
+            <input type="radio" name="wtype" value="in" checked onchange="updateWeightType()"> Weight IN
+          </label>
+          <label class="toggle-opt" id="opt_out">
+            <input type="radio" name="wtype" value="out" onchange="updateWeightType()"> Weight OUT
+          </label>
+        </div>
+      </div>
+
+      <!-- Net weight confirm -->
+      <div style="padding:14px;background:#0e0c0a;border:1px solid #2a2318;border-radius:6px;
+                  margin-bottom:14px;text-align:center">
+        <div style="font-size:9px;color:#5a4a2a;letter-spacing:2px;text-transform:uppercase">
+          Weight to Log
+        </div>
+        <div id="logWeightConfirm" style="font-size:32px;font-weight:700;color:#C9A84C;
+             font-family:'Cormorant Garamond',serif;margin:4px 0">
+          0.0000 g
+        </div>
+        <div id="logWeightSrc" style="font-size:10px;color:#5a4a2a">
+          Read weight first
+        </div>
+      </div>
+
+      <!-- Log button -->
+      <button id="logBtn" class="btn btn-primary w-full" style="justify-content:center;
+              font-size:13px;letter-spacing:1px;opacity:0.5;cursor:not-allowed"
+              onclick="logWeight()" disabled>
+        💾 SAVE WEIGHT LOG
+      </button>
+
+      <div style="margin-top:8px;font-size:10px;color:#5a4a2a;text-align:center;letter-spacing:0.5px">
+        Stable reading required before saving
       </div>
     </div>
   </div>
 
-  <!-- Log Weight to Job -->
-  <div class="card">
-    <div class="card-header"><span class="card-title">Log Weight to Job</span></div>
-    <div class="card-body">
-      <div class="form-group">
-        <label class="form-label">Job Code / Barcode</label>
-        <input id="wl_job_barcode" class="form-control" placeholder="Scan or type job barcode...">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Department</label>
-        <select id="wl_dept" class="form-control"></select>
-      </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">Gross Weight (g)</label>
-          <input id="wl_gross" type="number" step="0.0001" class="form-control" placeholder="0.0000">
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     SCALE SETUP GUIDE (shown only if scale is disconnected)
+══════════════════════════════════════════════════════════════ -->
+<div id="setupGuide" style="display:none;margin-bottom:14px">
+  <div class="card" style="border-color:#6a3a0a">
+    <div class="card-header" style="background:#1e0e04">
+      <span class="card-title" style="color:#e07b3b">⚠ Scale Not Connected — Setup Guide</span>
+      <button class="btn btn-secondary btn-sm" onclick="detectPorts()">🔍 Detect Ports</button>
+    </div>
+    <div class="card-body" style="font-size:12px;color:#8a7a5a;line-height:1.8">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div>
+          <div style="color:#C9A84C;font-weight:600;margin-bottom:6px">RS232 Scale Connection Steps:</div>
+          <div>1. Scale ko server PC se RS232 cable se connect karo</div>
+          <div>2. Windows: Device Manager → Ports (COM & LPT) → COM number dekho</div>
+          <div>3. Linux: <code style="color:#4cc96f">ls /dev/ttyUSB* /dev/ttyS*</code></div>
+          <div>4. <code style="color:#4cc96f">backend/.env</code> file mein set karo:</div>
+          <div style="margin:6px 0;padding:8px;background:#0a0908;border-radius:4px;font-family:monospace">
+            <div style="color:#4cc96f">SCALE_SIMULATION_MODE=false</div>
+            <div style="color:#4cc96f">SCALE_PORT=COM3</div>
+            <div style="color:#4cc96f">SCALE_BAUDRATE=9600</div>
+          </div>
+          <div>5. Server restart karo: <code style="color:#4cc96f">uvicorn main:app --reload</code></div>
         </div>
-        <div class="form-group">
-          <label class="form-label">Tare Weight (g)</label>
-          <input id="wl_tare" type="number" step="0.0001" class="form-control" value="0">
+        <div>
+          <div style="color:#C9A84C;font-weight:600;margin-bottom:6px">Available Ports:</div>
+          <div id="portsList" style="font-family:monospace;font-size:11px">
+            <span style="color:#5a4a2a">Click "Detect Ports" →</span>
+          </div>
         </div>
       </div>
-      <div style="padding:10px;background:#13110e;border-radius:4px;margin-bottom:14px">
-        <span class="text-muted text-sm">Net Weight: </span>
-        <span id="wl_net" class="text-gold bold">0.0000 g</span>
-      </div>
-      <button class="btn btn-primary w-full" style="justify-content:center" onclick="logWeight()">
-        Log Weight
-      </button>
     </div>
   </div>
 </div>
 
-<!-- Recent Weight Logs -->
+<!-- ═══════════════════════════════════════════════════════════
+     RECENT WEIGHT LOGS TABLE
+══════════════════════════════════════════════════════════════ -->
 <div class="card">
   <div class="card-header">
-    <span class="card-title">Recent Weight Logs</span>
-    <input class="search-input" id="wlJobId" placeholder="Job ID to view history..." style="width:180px">
-    <button class="btn btn-secondary btn-sm" onclick="loadJobWeightHistory()">Load</button>
+    <span class="card-title">📊 Weight Log History</span>
+    <div style="display:flex;gap:8px;align-items:center">
+      <input id="histJobId" class="search-input" placeholder="Job ID..." style="width:120px">
+      <button class="btn btn-secondary btn-sm" onclick="loadHistory()">Load</button>
+      <button class="btn btn-secondary btn-sm" onclick="loadRecentAll()">Recent (All)</button>
+    </div>
   </div>
   <table class="data-table">
-    <thead><tr><th>Job ID</th><th>Gross</th><th>Tare</th><th>Net</th><th>Source</th><th>Time</th></tr></thead>
-    <tbody id="weightLogBody"><tr><td colspan="6" class="empty-state">Enter job ID above to view history</td></tr></tbody>
+    <thead>
+      <tr>
+        <th>Job</th>
+        <th>Stage</th>
+        <th>Gross (g)</th>
+        <th>Tare (g)</th>
+        <th>NET (g)</th>
+        <th>Source</th>
+        <th>Operator</th>
+        <th>Time</th>
+      </tr>
+    </thead>
+    <tbody id="weightLogBody">
+      <tr><td colspan="8" class="empty-state">Enter Job ID above and click Load</td></tr>
+    </tbody>
   </table>
 </div>
+
 {% endblock %}
+
+
+{% block extra_css %}
+<style>
+/* Weight display — large gold readout */
+.weight-display {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 72px;
+  font-weight: 700;
+  color: #C9A84C;
+  letter-spacing: 0.06em;
+  line-height: 1;
+  text-shadow: 0 0 30px rgba(201,168,76,0.25);
+  transition: color 0.3s ease;
+}
+.weight-display.stable {
+  color: #4cc96f;
+  text-shadow: 0 0 30px rgba(76,201,111,0.25);
+}
+.weight-display.unstable {
+  color: #e07b3b;
+}
+
+/* Stable indicator light */
+.stable-light {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  transition: all 0.3s ease;
+}
+.stable-light.stable {
+  background: #4cc96f;
+  box-shadow: 0 0 8px #4cc96f;
+}
+.stable-light.unstable {
+  background: #e07b3b;
+  box-shadow: 0 0 8px #e07b3b;
+  animation: blink 1s infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+/* Mini stats below weight */
+.mini-stat {
+  text-align: center;
+  padding: 8px;
+  background: #0a0908;
+  border: 1px solid #2a2318;
+  border-radius: 4px;
+}
+.mini-label { font-size: 9px; color: #5a4a2a; letter-spacing: 2px; margin-bottom: 2px; }
+.mini-value { font-size: 15px; font-weight: 600; color: #C9A84C; font-family: 'Courier New', monospace; }
+.mini-value.gold { color: #C9A84C; }
+.mini-unit { font-size: 9px; color: #5a4a2a; }
+
+/* Reading spinner */
+.spin-ring {
+  width: 36px; height: 36px;
+  border: 3px solid rgba(201,168,76,0.2);
+  border-top-color: #C9A84C;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Toggle option buttons */
+.toggle-opt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: #13110e;
+  border: 1px solid #2a2318;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  color: #8a7a5a;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  transition: all 0.15s;
+}
+.toggle-opt:has(input:checked) {
+  background: #1a1408;
+  border-color: #C9A84C;
+  color: #C9A84C;
+}
+</style>
+{% endblock %}
+
 
 {% block extra_js %}
 <script>
-let tarerWeight = 0;
-let lastReadWeight = 0;
-let jobIdCache = {};
+/* ═══════════════════════════════════════════════════════════
+   SCALE PAGE — COMPLETE LOGIC
+   Gold accuracy: Only logs STABLE readings
+══════════════════════════════════════════════════════════════ */
 
-// Read weight from scale (simulation or real)
+// State
+let currentReading = null;   // Last reading from scale
+let currentJobId = null;     // Currently selected job ID
+let isReading = false;       // Currently polling scale?
+let tareValue = 0;           // Current tare
+
+// ── Scale Read ────────────────────────────────────────────────
+
 async function readWeight() {
-  const expected = parseFloat(document.getElementById('wl_gross').value) || 10.0;
+  if (isReading) return;
+  isReading = true;
+
+  const btn = document.getElementById('readBtn');
+  btn.disabled = true;
+  btn.textContent = '⌛ Reading...';
+  document.getElementById('unstableWarn').style.display = 'none';
+  document.getElementById('readingOverlay').style.display = 'flex';
+  setWeightClass('');
+
   try {
+    const expected = currentReading ? currentReading.gross_weight : 10.0;
     const data = await API.post(`/api/v1/scale/read-weight?expected_weight=${expected}`);
-    lastReadWeight = data.weight;
-    const net = Math.max(0, data.weight - tarerWeight);
-    document.getElementById('weightDisplay').textContent = data.weight.toFixed(3);
-    document.getElementById('stableIndicator').innerHTML =
-      data.stable
-        ? '<span style="color:#4cc96f">● STABLE</span>'
-        : '<span style="color:#e07b3b">● UNSTABLE</span>';
-    document.getElementById('wl_gross').value = data.weight.toFixed(4);
-    updateNet();
-    showToast(`Weight read: ${data.weight.toFixed(3)}g`);
+
+    if (data.error && !data.weight) {
+      showToast('Scale error: ' + data.error, 'error');
+      resetWeightDisplay();
+      return;
+    }
+
+    currentReading = data;
+    displayReading(data);
+
   } catch(e) {
     showToast('Scale read failed: ' + e.message, 'error');
+    resetWeightDisplay();
+  } finally {
+    isReading = false;
+    btn.disabled = false;
+    btn.textContent = '⚖ Read Weight';
+    document.getElementById('readingOverlay').style.display = 'none';
   }
 }
 
-function tareScale() {
-  tarerWeight = lastReadWeight;
-  document.getElementById('wl_tare').value = tarerWeight.toFixed(4);
-  updateNet();
-  showToast('Tare set to ' + tarerWeight.toFixed(4) + 'g');
+function displayReading(data) {
+  const net = parseFloat(data.weight || 0);
+  const gross = parseFloat(data.gross_weight || 0);
+  const tare = parseFloat(data.tare_weight || 0);
+  const stable = data.stable;
+
+  // Main display
+  document.getElementById('weightDisplay').textContent = net.toFixed(4);
+  document.getElementById('grossDisplay').textContent = gross.toFixed(4);
+  document.getElementById('tareDisplay').textContent = tare.toFixed(4);
+  document.getElementById('attemptsDisplay').textContent = data.attempts || '—';
+
+  // Color coding
+  setWeightClass(stable ? 'stable' : 'unstable');
+
+  // Stable indicator
+  const light = document.getElementById('stableLight');
+  const label = document.getElementById('stableLabel');
+  if (stable) {
+    light.className = 'stable-light stable';
+    label.innerHTML = '<span style="color:#4cc96f">● STABLE — Ready to log</span>';
+    document.getElementById('unstableWarn').style.display = 'none';
+    // Enable log button if job selected
+    updateLogButton();
+  } else {
+    light.className = 'stable-light unstable';
+    label.innerHTML = '<span style="color:#e07b3b">● UNSTABLE — Wait for stable</span>';
+    document.getElementById('unstableWarn').style.display = 'block';
+    disableLogButton();
+  }
+
+  // Raw line
+  if (data.raw_reading) {
+    document.getElementById('rawLine').textContent = data.raw_reading;
+    document.getElementById('rawLineBox').style.display = 'block';
+  }
+
+  // Log weight confirm panel
+  document.getElementById('logWeightConfirm').textContent = net.toFixed(4) + ' g';
+  document.getElementById('logWeightSrc').textContent =
+    (data.simulated ? '🔬 Simulation' : '⚖ RS232 Scale') +
+    (stable ? ' — Stable ✓' : ' — Unstable ✗');
 }
 
-function clearWeight() {
-  document.getElementById('weightDisplay').textContent = '---.---';
-  document.getElementById('stableIndicator').textContent = 'Not reading';
-  lastReadWeight = 0;
-  tarerWeight = 0;
+function setWeightClass(cls) {
+  const d = document.getElementById('weightDisplay');
+  d.className = 'weight-display' + (cls ? ' ' + cls : '');
 }
 
-function updateNet() {
-  const gross = parseFloat(document.getElementById('wl_gross').value) || 0;
-  const tare = parseFloat(document.getElementById('wl_tare').value) || 0;
-  const net = Math.max(0, gross - tare);
-  document.getElementById('wl_net').textContent = net.toFixed(4) + ' g';
+function resetWeightDisplay() {
+  document.getElementById('weightDisplay').textContent = '---.----';
+  document.getElementById('stableLabel').textContent = '● Read failed — try again';
+  setWeightClass('');
+  disableLogButton();
 }
 
-document.getElementById('wl_gross').addEventListener('input', updateNet);
-document.getElementById('wl_tare').addEventListener('input', updateNet);
+// ── Tare ─────────────────────────────────────────────────────
 
-// Find job by barcode
-document.getElementById('wl_job_barcode').addEventListener('change', async function() {
-  const val = this.value.trim();
-  if (!val) return;
+async function setTare() {
+  if (!currentReading) {
+    // Read scale first
+    await readWeight();
+    if (!currentReading) return;
+  }
   try {
-    const job = await API.get(`/api/v1/jobs/barcode/${encodeURIComponent(val)}`);
-    jobIdCache.current = job.id;
-    showToast(`Job found: ${job.job_code} — ${job.current_stage}`);
+    const r = await API.post(`/api/v1/scale/tare?tare_value=${currentReading.gross_weight}`);
+    tareValue = r.tare;
+    document.getElementById('tareDisplay').textContent = r.tare.toFixed(4);
+    showToast(`Tare set: ${r.tare.toFixed(4)}g`);
+    currentReading = null;
+    document.getElementById('weightDisplay').textContent = '---.----';
+    document.getElementById('stableLabel').textContent = '● Tare set — Read weight again';
   } catch(e) {
-    // Try by job code prefix
-    try {
-      const result = await API.get(`/api/v1/jobs/?q=${encodeURIComponent(val)}&per_page=1`);
-      if (result.items.length > 0) {
-        jobIdCache.current = result.items[0].id;
-        showToast(`Job: ${result.items[0].job_code}`);
-      }
-    } catch(e2) {
-      showToast('Job not found', 'error');
-    }
+    showToast('Tare failed: ' + e.message, 'error');
+  }
+}
+
+function clearAll() {
+  currentReading = null;
+  document.getElementById('weightDisplay').textContent = '---.----';
+  document.getElementById('grossDisplay').textContent = '0.0000';
+  document.getElementById('tareDisplay').textContent = '0.0000';
+  document.getElementById('attemptsDisplay').textContent = '—';
+  document.getElementById('stableLabel').textContent = '● Cleared';
+  document.getElementById('rawLineBox').style.display = 'none';
+  document.getElementById('logWeightConfirm').textContent = '0.0000 g';
+  document.getElementById('logWeightSrc').textContent = 'Read weight first';
+  document.getElementById('unstableWarn').style.display = 'none';
+  setWeightClass('');
+  disableLogButton();
+}
+
+// ── Job Barcode Lookup ────────────────────────────────────────
+
+const jobInput = document.getElementById('jobBarcodeInput');
+
+// Auto-focus for USB barcode scanner
+jobInput.focus();
+document.addEventListener('click', () => {
+  // Re-focus if nothing else is focused — keeps scanner always ready
+  if (!['INPUT','SELECT','TEXTAREA','BUTTON'].includes(document.activeElement.tagName)) {
+    jobInput.focus();
   }
 });
 
-async function logWeight() {
-  const jobId = jobIdCache.current;
-  if (!jobId) { showToast('Find a job first', 'error'); return; }
-  const gross = parseFloat(document.getElementById('wl_gross').value);
-  const tare = parseFloat(document.getElementById('wl_tare').value) || 0;
-  const deptId = parseInt(document.getElementById('wl_dept').value);
-  if (!gross || !deptId) { showToast('Enter weight and select department', 'error'); return; }
+// Enter key triggers job lookup (USB scanner sends Enter after barcode)
+jobInput.addEventListener('keydown', async function(e) {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    await lookupJob(this.value.trim());
+  }
+});
 
+async function lookupJob(val) {
+  if (!val) return;
   try {
-    const r = await API.post(`/api/v1/scale/log-weight?job_id=${jobId}&department_id=${deptId}&gross_weight=${gross}&tare_weight=${tare}`);
-    showToast(`Weight logged: ${r.net_weight}g net`);
-  } catch(e) { showToast(e.message, 'error'); }
+    // Try barcode first
+    let job;
+    try {
+      job = await API.get(`/api/v1/jobs/barcode/${encodeURIComponent(val)}`);
+    } catch(e1) {
+      // Fallback: search by job code
+      const res = await API.get(`/api/v1/jobs/?q=${encodeURIComponent(val)}&per_page=1`);
+      if (res.items && res.items.length > 0) {
+        job = res.items[0];
+      }
+    }
+    if (!job) { showToast('Job not found: ' + val, 'error'); return; }
+
+    currentJobId = job.id;
+    document.getElementById('jobInfo').style.display = 'block';
+    document.getElementById('jobFoundBadge').style.display = 'inline-block';
+    document.getElementById('jobInfoLine1').textContent =
+      `${job.job_code} — ${job.design_name || ''}  [${job.metal_type}]`;
+    document.getElementById('jobInfoLine2').textContent =
+      `Stage: ${job.current_stage}  |  Status: ${job.status}  |  Target: ${job.target_weight}g`;
+    showToast(`Job: ${job.job_code} (${job.current_stage})`);
+    updateLogButton();
+  } catch(e) {
+    showToast('Job lookup failed: ' + e.message, 'error');
+  }
 }
 
-async function loadJobWeightHistory() {
-  const id = document.getElementById('wlJobId').value.trim();
+function clearJobInput() {
+  jobInput.value = '';
+  currentJobId = null;
+  document.getElementById('jobInfo').style.display = 'none';
+  document.getElementById('jobFoundBadge').style.display = 'none';
+  disableLogButton();
+  jobInput.focus();
+}
+
+// ── Log Weight ────────────────────────────────────────────────
+
+function updateLogButton() {
+  const btn = document.getElementById('logBtn');
+  if (currentJobId && currentReading && currentReading.stable) {
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    btn.style.cursor = 'pointer';
+  } else {
+    disableLogButton();
+  }
+}
+
+function disableLogButton() {
+  const btn = document.getElementById('logBtn');
+  btn.disabled = true;
+  btn.style.opacity = '0.5';
+  btn.style.cursor = 'not-allowed';
+}
+
+function updateWeightType() { /* future: weight in vs out logic */ }
+
+async function logWeight() {
+  if (!currentJobId) { showToast('Select a job first', 'error'); return; }
+  if (!currentReading) { showToast('Read weight first', 'error'); return; }
+  if (!currentReading.stable) { showToast('Wait for STABLE reading before logging', 'error'); return; }
+
+  const deptId = parseInt(document.getElementById('logDeptSelect').value);
+  if (!deptId) { showToast('Select department', 'error'); return; }
+
+  const gross = currentReading.gross_weight;
+  const tare = currentReading.tare_weight;
+  const net = currentReading.weight;
+
+  try {
+    const r = await API.post(
+      `/api/v1/scale/log-weight?job_id=${currentJobId}&department_id=${deptId}` +
+      `&gross_weight=${gross}&tare_weight=${tare}&is_manual=false`
+    );
+
+    showToast(`✅ Logged: ${r.net_weight.toFixed(4)}g net — Log #${r.log_id}`);
+    
+    // Flash green on weight display
+    document.getElementById('weightDisplay').style.color = '#4cc96f';
+    setTimeout(() => {
+      document.getElementById('weightDisplay').style.color = '';
+    }, 1000);
+
+    // Clear reading so operator must re-read for next item
+    currentReading = null;
+    disableLogButton();
+    document.getElementById('logWeightSrc').textContent = '✅ Logged — Read next weight';
+
+    // Reload history
+    document.getElementById('histJobId').value = currentJobId;
+    await loadHistory();
+
+  } catch(e) {
+    showToast('Log failed: ' + e.message, 'error');
+  }
+}
+
+// ── History ───────────────────────────────────────────────────
+
+async function loadHistory() {
+  const id = document.getElementById('histJobId').value.trim();
   if (!id) return;
   try {
     const logs = await API.get(`/api/v1/scale/history/${id}`);
-    document.getElementById('weightLogBody').innerHTML = logs.length ?
-      logs.map(l => `<tr>
-        <td class="text-gold">${id}</td>
-        <td>${parseFloat(l.gross_weight).toFixed(4)}g</td>
-        <td>${parseFloat(l.tare_weight).toFixed(4)}g</td>
-        <td class="text-gold bold">${parseFloat(l.net_weight).toFixed(4)}g</td>
-        <td><span class="badge badge-blue">${l.scale_type}</span></td>
-        <td class="text-muted text-sm">${fmtDateTime(l.captured_at)}</td>
-      </tr>`).join('') :
-      '<tr><td colspan="6" class="empty-state">No weight logs for this job</td></tr>';
-  } catch(e) { showToast(e.message, 'error'); }
+    renderLogs(logs, id);
+  } catch(e) {
+    showToast(e.message, 'error');
+  }
 }
 
-// Init
-populateSelect('wl_dept', '/api/v1/departments/', 'id', 'name');
+async function loadRecentAll() {
+  // Load weight logs for current job if selected, else recent 20 weight logs
+  if (currentJobId) {
+    document.getElementById('histJobId').value = currentJobId;
+    await loadHistory();
+  } else {
+    showToast('Select a job first to load its history', 'error');
+  }
+}
 
-// Check scale status on load
-API.get('/api/v1/scale/status').then(s => {
-  const badge = document.getElementById('scaleStatusBadge');
-  badge.textContent = s.mode.toUpperCase();
-  badge.className = `badge ${s.connected ? 'badge-green' : 'badge-orange'}`;
-}).catch(() => {});
+function renderLogs(logs, jobId) {
+  const tbody = document.getElementById('weightLogBody');
+  if (!logs || logs.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" class="empty-state">No weight logs for Job ${jobId}</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = logs.map(l => {
+    const net = parseFloat(l.net_weight);
+    const gross = parseFloat(l.gross_weight);
+    const tare = parseFloat(l.tare_weight);
+    const variance = gross > 0 ? ((net / gross) * 100).toFixed(1) : '100.0';
+    const typeColor = l.scale_type === 'RS232' ? 'badge-green' :
+                     l.scale_type === 'Manual' ? 'badge-orange' : 'badge-blue';
+    return `<tr>
+      <td class="text-gold">${jobId}</td>
+      <td>—</td>
+      <td>${gross.toFixed(4)}</td>
+      <td>${tare.toFixed(4)}</td>
+      <td class="text-gold bold" style="font-size:13px">${net.toFixed(4)}</td>
+      <td><span class="badge ${typeColor}">${l.scale_type}</span></td>
+      <td class="text-muted text-sm">—</td>
+      <td class="text-muted text-sm">${fmtDateTime(l.captured_at)}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── Scale Status ──────────────────────────────────────────────
+
+async function checkScaleStatus() {
+  try {
+    const s = await API.get('/api/v1/scale/status');
+    const badge = document.getElementById('scaleModeBadge');
+    const guide = document.getElementById('setupGuide');
+
+    if (s.mode === 'simulation') {
+      badge.textContent = '🔬 SIMULATION';
+      badge.className = 'badge badge-blue';
+      guide.style.display = 'none';
+    } else if (s.connected) {
+      badge.textContent = '⚖ RS232 LIVE';
+      badge.className = 'badge badge-green';
+      guide.style.display = 'none';
+    } else {
+      badge.textContent = '✕ DISCONNECTED';
+      badge.className = 'badge badge-orange';
+      guide.style.display = 'block';
+    }
+
+    // Update tare if set on server
+    if (s.tare) {
+      tareValue = s.tare;
+      document.getElementById('tareDisplay').textContent = s.tare.toFixed(4);
+    }
+  } catch(e) {
+    console.warn('Status check failed', e);
+  }
+}
+
+async function detectPorts() {
+  try {
+    const r = await API.get('/api/v1/scale/detect-port');
+    const list = document.getElementById('portsList');
+    if (r.available_ports && r.available_ports.length > 0) {
+      list.innerHTML = r.available_ports.map(p =>
+        `<div style="margin:3px 0;color:${p.likely_scale ? '#4cc96f' : '#5a4a2a'}">
+          ${p.likely_scale ? '▶' : '·'} <b>${p.port}</b> — ${p.description || 'Unknown'}
+        </div>`
+      ).join('');
+      if (r.suggestion) {
+        showToast(`Detected port: ${r.suggestion} — update SCALE_PORT in .env`);
+      }
+    } else {
+      list.innerHTML = '<span style="color:#e04c4c">No serial ports found</span>';
+    }
+  } catch(e) {
+    showToast('Port detection failed: ' + e.message, 'error');
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────────
+
+// Load departments dropdown
+populateSelect('logDeptSelect', '/api/v1/departments/', 'id', 'name');
+
+// Check scale status on load + every 10s
+checkScaleStatus();
+setInterval(checkScaleStatus, 10000);
+
+// Focus barcode input on page load
+setTimeout(() => jobInput.focus(), 200);
 </script>
 {% endblock %}
