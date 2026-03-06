@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Users{% endblock %}
+{% block page_title %}User Management{% endblock %}
+{% block page_subtitle %}ROLES & ACCESS CONTROL{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <span class="card-title">System Users</span>
+    <button class="btn btn-primary btn-sm" onclick="openModal('newUserModal')">+ Add User</button>
+  </div>
+  <table class="data-table">
+    <thead><tr><th>Name</th><th>Username</th><th>Email</th><th>Role</th><th>Status</th><th>Action</th></tr></thead>
+    <tbody id="usersBody"><tr><td colspan="6" class="empty-state">Loading...</td></tr></tbody>
+  </table>
+</div>
+
+<div style="margin-top:16px;display:grid;grid-template-columns:repeat(3,1fr);gap:14px">
+  {% for role, color in [('Admin','badge-red'),('Production Manager','badge-orange'),('Department Operator','badge-blue'),('Metal Store Manager','badge-gold'),('Accountant','badge-green'),('QC Officer','badge-purple')] %}
+  <div class="card">
+    <div class="card-body" style="padding:16px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span class="badge {{ color }}">{{ role }}</span>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="modal-overlay hidden" id="newUserModal">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title">Add User</span><button class="modal-close" onclick="closeModal('newUserModal')">×</button></div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Full Name *</label><input id="u_name" class="form-control"></div>
+        <div class="form-group"><label class="form-label">Email *</label><input id="u_email" type="email" class="form-control"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Username *</label><input id="u_username" class="form-control"></div>
+        <div class="form-group"><label class="form-label">Password *</label><input id="u_password" type="password" class="form-control"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Role *</label><select id="u_role" class="form-control"></select></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('newUserModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitUser()">Create User</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+const ROLE_COLORS = {Admin:'badge-red','Production Manager':'badge-orange','Department Operator':'badge-blue','Metal Store Manager':'badge-gold',Accountant:'badge-green','QC Officer':'badge-purple'};
+async function loadUsers() {
+  try {
+    const data = await API.get('/api/v1/users/');
+    document.getElementById('usersBody').innerHTML = data.map(u=>`
+      <tr><td class="bold">${u.name}</td><td class="text-gold">${u.username}</td><td class="text-muted">${u.email}</td>
+      <td><span class="badge ${ROLE_COLORS[u.role]||'badge-gray'}">${u.role}</span></td>
+      <td><span class="badge ${u.is_active?'badge-green':'badge-red'}">${u.is_active?'Active':'Inactive'}</span></td>
+      <td><button class="btn btn-secondary btn-sm" onclick="toggleUser(${u.id},${!u.is_active})">${u.is_active?'Deactivate':'Activate'}</button></td></tr>`).join('');
+  } catch(e) { document.getElementById('usersBody').innerHTML='<tr><td colspan="6" class="empty-state">Insufficient permissions</td></tr>'; }
+}
+async function submitUser() {
+  const b={name:document.getElementById('u_name').value,email:document.getElementById('u_email').value,username:document.getElementById('u_username').value,password:document.getElementById('u_password').value,role_id:parseInt(document.getElementById('u_role').value)};
+  try{await API.post('/api/v1/users/',b);showToast('User created');closeModal('newUserModal');loadUsers();}catch(e){showToast(e.message,'error');}
+}
+async function toggleUser(id, isActive) {
+  try{await API.put(`/api/users/${id}`,{is_active:isActive});showToast('User updated');loadUsers();}catch(e){showToast(e.message,'error');}
+}
+populateSelect('u_role','/api/v1/users/roles','id','name');
+loadUsers();
+</script>
+{% endblock %}

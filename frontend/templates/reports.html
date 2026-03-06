@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Reports{% endblock %}
+{% block page_title %}Reports{% endblock %}
+{% block page_subtitle %}PRODUCTION ANALYTICS & AUDIT TRAIL{% endblock %}
+{% block content %}
+<div class="tab-group" style="margin-bottom:16px">
+  <button class="tab active" onclick="showReport('dashboard',this)">Dashboard Summary</button>
+  <button class="tab" onclick="showReport('variance',this)">Weight Variance</button>
+  <button class="tab" onclick="showReport('profitability',this)">Profitability</button>
+  <button class="tab" onclick="showReport('audit',this)">Audit Trail</button>
+</div>
+
+<div id="reportContent">
+  <div class="card">
+    <div class="card-header"><span class="card-title">Dashboard Summary</span></div>
+    <div class="card-body" id="reportBody"><div class="empty-state">Loading...</div></div>
+  </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+async function showReport(type, btn) {
+  document.querySelectorAll('.tab-group .tab').forEach(t=>t.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('reportBody').innerHTML = '<div class="empty-state">Loading...</div>';
+  if (type==='dashboard') {
+    const d = await API.get('/api/v1/reports/dashboard');
+    document.getElementById('reportBody').innerHTML = `
+      <div class="metric-grid" style="margin-bottom:20px">
+        <div class="metric-card"><div class="metric-label">Total Jobs</div><div class="metric-value text-gold">${d.jobs.total}</div></div>
+        <div class="metric-card"><div class="metric-label">Active</div><div class="metric-value text-green">${d.jobs.active}</div></div>
+        <div class="metric-card"><div class="metric-label">QC Pending</div><div class="metric-value text-orange">${d.jobs.qc_pending}</div></div>
+        <div class="metric-card"><div class="metric-label">Completed</div><div class="metric-value text-green">${d.jobs.completed}</div></div>
+      </div>
+      <h4 style="color:#8a7a5a;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:12px">Metal Stock</h4>
+      <table class="data-table"><thead><tr><th>Metal</th><th>Type</th><th>Quantity</th></tr></thead>
+      <tbody>${d.metal_stock.map(s=>`<tr><td class="text-gold">${s.type}</td><td class="text-muted">${s.stock_type}</td><td>${parseFloat(s.qty).toFixed(3)}g</td></tr>`).join('')}</tbody></table>`;
+  } else if (type==='variance') {
+    const d = await API.get('/api/v1/reports/weight-variance');
+    document.getElementById('reportBody').innerHTML = d.length ? `
+      <table class="data-table"><thead><tr><th>Job ID</th><th>Stage</th><th>Weight In</th><th>Weight Out</th><th>Variance</th></tr></thead>
+      <tbody>${d.map(r=>`<tr><td class="text-gold">${r.job_id}</td><td>${r.stage}</td><td>${parseFloat(r.weight_in).toFixed(3)}g</td><td>${parseFloat(r.weight_out).toFixed(3)}g</td><td class="${r.variance>0?'text-orange':'text-green'}">${parseFloat(r.variance).toFixed(3)}g</td></tr>`).join('')}</tbody></table>` :
+      '<div class="empty-state">No weight variance data yet</div>';
+  } else if (type==='profitability') {
+    const d = await API.get('/api/v1/costing/report/profitability');
+    document.getElementById('reportBody').innerHTML = d.length ? `
+      <table class="data-table"><thead><tr><th>Job ID</th><th>Total Cost</th><th>Sale Price</th><th>Profit/Loss</th><th>Margin</th></tr></thead>
+      <tbody>${d.map(r=>`<tr><td class="text-gold">${r.job_id}</td><td>${fmtCur(r.total_cost)}</td><td>${fmtCur(r.sale_price)}</td><td class="${r.profit>=0?'text-green':'text-red'}">${fmtCur(r.profit)}</td><td>${fmtPct(r.margin_pct)}</td></tr>`).join('')}</tbody></table>` :
+      '<div class="empty-state">No costing data yet</div>';
+  } else if (type==='audit') {
+    const d = await API.get('/api/v1/reports/audit-trail');
+    document.getElementById('reportBody').innerHTML = `
+      <table class="data-table"><thead><tr><th>User</th><th>Action</th><th>Module</th><th>Record</th><th>Time</th></tr></thead>
+      <tbody>${d.items.map(l=>`<tr><td class="text-muted">#${l.user_id}</td><td>${l.action}</td><td><span class="badge badge-blue">${l.module}</span></td><td class="text-muted">${l.record_id||'—'}</td><td class="text-muted text-sm">${fmtDateTime(l.at)}</td></tr>`).join('')}</tbody></table>`;
+  }
+}
+showReport('dashboard', document.querySelector('.tab'));
+</script>
+{% endblock %}

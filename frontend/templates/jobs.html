@@ -1,0 +1,325 @@
+{% extends "base.html" %}
+{% block title %}Job Orders{% endblock %}
+{% block page_title %}Job Orders{% endblock %}
+{% block page_subtitle %}JOB & PRODUCTION MANAGEMENT{% endblock %}
+
+{% block content %}
+<div style="display:flex;gap:0;height:calc(100vh - 112px);overflow:hidden;margin:-24px -28px">
+
+  <!-- TABLE SIDE -->
+  <div style="flex:1;overflow:auto;display:flex;flex-direction:column">
+
+    <!-- TOOLBAR -->
+    <div class="toolbar">
+      <div class="toolbar-left">
+        <div class="tab-group">
+          <button class="tab active" data-status="">All</button>
+          <button class="tab" data-status="New">New</button>
+          <button class="tab" data-status="In Progress">Active</button>
+          <button class="tab" data-status="QC Pending">QC</button>
+          <button class="tab" data-status="Completed">Done</button>
+        </div>
+      </div>
+      <div class="toolbar-right">
+        <input class="search-input" id="searchInput" placeholder="Search job / design...">
+        <button class="btn btn-primary" onclick="openModal('newJobModal')">+ New Job</button>
+      </div>
+    </div>
+
+    <!-- TABLE -->
+    <div class="table-wrapper" style="flex:1;overflow:auto">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Job Code</th>
+            <th>Design / Customer</th>
+            <th>Metal</th>
+            <th>Target Wt</th>
+            <th>Qty</th>
+            <th>Stage</th>
+            <th>Status</th>
+            <th>Priority</th>
+            <th>Created</th>
+          </tr>
+        </thead>
+        <tbody id="jobsBody">
+          <tr><td colspan="9" class="empty-state">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- PAGINATION -->
+    <div class="pagination">
+      <span class="page-info" id="pageInfo"></span>
+      <button class="btn btn-secondary btn-sm" id="prevBtn" onclick="changePage(-1)">← Prev</button>
+      <button class="btn btn-secondary btn-sm" id="nextBtn" onclick="changePage(1)">Next →</button>
+    </div>
+  </div>
+
+  <!-- DETAIL PANEL -->
+  <div class="detail-panel hidden" id="detailPanel" style="padding:18px 16px;min-width:280px;max-width:300px">
+    <div class="flex justify-between items-center mb-4">
+      <div class="serif" style="font-size:17px;color:#e8d89a">Job Detail</div>
+      <button class="btn btn-secondary btn-icon" onclick="closeDetail()">×</button>
+    </div>
+    <div id="detailContent"></div>
+  </div>
+</div>
+
+<!-- NEW JOB MODAL -->
+<div class="modal-overlay hidden" id="newJobModal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Create New Job</span>
+      <button class="modal-close" onclick="closeModal('newJobModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Design Name *</label>
+          <input id="f_design_name" class="form-control" placeholder="e.g. Kundan Necklace">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Customer *</label>
+          <select id="f_customer_id" class="form-control"><option value="">Loading...</option></select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Metal Type *</label>
+          <select id="f_metal_type" class="form-control">
+            <option value="22K">22K Gold</option>
+            <option value="24K">24K Gold</option>
+            <option value="18K">18K Gold</option>
+            <option value="Silver">Silver</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Target Weight (g) *</label>
+          <input id="f_target_weight" type="number" step="0.001" class="form-control" placeholder="0.000">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Order Quantity</label>
+          <input id="f_order_qty" type="number" class="form-control" value="1" min="1">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Wastage % Allowed</label>
+          <input id="f_wastage" type="number" step="0.01" class="form-control" value="2.00">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Priority</label>
+          <select id="f_priority" class="form-control">
+            <option value="Normal">Normal</option>
+            <option value="High">High</option>
+            <option value="Urgent">Urgent</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Expected Delivery</label>
+          <input id="f_delivery" type="date" class="form-control">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <textarea id="f_notes" class="form-control" rows="2" placeholder="Optional notes..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('newJobModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitNewJob()">Create Job</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADVANCE STAGE MODAL -->
+<div class="modal-overlay hidden" id="advanceModal">
+  <div class="modal" style="width:400px">
+    <div class="modal-header">
+      <span class="modal-title">Advance Stage</span>
+      <button class="modal-close" onclick="closeModal('advanceModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Weight Out (g)</label>
+        <input id="adv_weight" type="number" step="0.001" class="form-control" placeholder="0.000">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <textarea id="adv_notes" class="form-control" rows="2"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('advanceModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAdvance()">Advance Stage →</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentPage = 1, currentStatus = '', currentSearch = '', currentJobId = null;
+
+// Load jobs
+async function loadJobs() {
+  let url = `/api/v1/jobs/?page=${currentPage}&per_page=20`;
+  if (currentStatus) url += `&status=${encodeURIComponent(currentStatus)}`;
+  if (currentSearch) url += `&q=${encodeURIComponent(currentSearch)}`;
+  try {
+    const data = await API.get(url);
+    const tbody = document.getElementById('jobsBody');
+    document.getElementById('pageInfo').textContent = `${data.total} jobs · Page ${data.page} of ${data.pages}`;
+    document.getElementById('prevBtn').disabled = data.page <= 1;
+    document.getElementById('nextBtn').disabled = data.page >= data.pages;
+    if (!data.items.length) {
+      tbody.innerHTML = '<tr><td colspan="9" class="empty-state">No jobs found</td></tr>'; return;
+    }
+    tbody.innerHTML = data.items.map(j => `
+      <tr onclick="showDetail(${j.id})">
+        <td class="text-gold bold">${j.job_code}</td>
+        <td>
+          <div>${j.design_name}</div>
+          <div class="text-xs text-muted">${j.customer_name}</div>
+        </td>
+        <td>${metalBadge(j.metal_type)}</td>
+        <td>${fmtWt(j.target_weight)}</td>
+        <td class="text-muted">${j.order_qty} pcs</td>
+        <td><span class="badge badge-blue">${j.current_stage}</span></td>
+        <td>${statusBadge(j.status)}</td>
+        <td>${priorityBadge(j.priority)}</td>
+        <td class="text-muted text-sm">${fmtDate(j.created_at)}</td>
+      </tr>`).join('');
+  } catch (e) { showToast('Failed to load jobs', 'error'); }
+}
+
+// Tab filtering
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    currentStatus = tab.dataset.status;
+    currentPage = 1;
+    loadJobs();
+  });
+});
+
+// Search
+document.getElementById('searchInput').addEventListener('input', debounce(e => {
+  currentSearch = e.target.value;
+  currentPage = 1;
+  loadJobs();
+}));
+
+function changePage(dir) { currentPage += dir; loadJobs(); }
+
+// Show detail panel
+async function showDetail(jobId) {
+  currentJobId = jobId;
+  try {
+    const j = await API.get(`/api/v1/jobs/${jobId}`);
+    const panel = document.getElementById('detailPanel');
+    panel.classList.remove('hidden');
+    document.getElementById('detailContent').innerHTML = `
+      <!-- Barcode visual -->
+      <div style="text-align:center;padding:14px;background:#13110e;border:1px solid #2a2318;border-radius:6px;margin-bottom:16px">
+        <div class="serif text-gold" style="font-size:20px;font-weight:600">${j.job_code}</div>
+        <div class="text-xs text-muted" style="margin:4px 0 10px">${j.barcode}</div>
+        <div style="display:flex;gap:2px;justify-content:center;height:28px;align-items:flex-end">
+          ${Array.from({length:28},(_,i)=>`<div style="width:${i%3===0?2:1}px;height:${i%5===0?28:i%3===0?20:16}px;background:#C9A84C;border-radius:1px;opacity:${0.6+(i%3)*0.15}"></div>`).join('')}
+        </div>
+      </div>
+
+      ${[
+        ['Design', j.design_name],
+        ['Customer', j.customer_name],
+        ['Metal', j.metal_type],
+        ['Qty', j.order_qty + ' pcs'],
+        ['Target Wt', fmtWt(j.target_weight)],
+        ['Wastage', j.allowed_wastage_pct + '%'],
+        ['Priority', j.priority],
+        ['Delivery', fmtDate(j.expected_delivery)],
+        ['Created', fmtDate(j.created_at)],
+      ].map(([l,v])=>`<div class="detail-row"><span class="detail-label">${l}</span><span class="detail-value">${v||'—'}</span></div>`).join('')}
+
+      <!-- Stage progress -->
+      <div style="margin-top:16px">
+        <div class="text-xs text-muted" style="letter-spacing:0.1em;text-transform:uppercase;margin-bottom:10px">Stage Progress</div>
+        <div class="stage-tracker">
+          ${(j.stages||[]).map(s => {
+            const isDone = s.status === 'Completed';
+            const isActive = s.status === 'In Progress';
+            return `<div class="stage-item">
+              <div class="stage-dot ${isDone?'done':isActive?'active':'pending'}">${isDone?'✓':isActive?'→':''}</div>
+              <div class="stage-label ${isDone?'done':isActive?'active':'pending'}">${s.stage_name}</div>
+              ${isActive?'<span class="badge badge-gold" style="margin-left:auto;font-size:9px">ACTIVE</span>':''}
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+
+      <!-- Actions -->
+      <div style="margin-top:18px;display:flex;flex-direction:column;gap:8px">
+        <button class="btn btn-primary w-full" style="justify-content:center" onclick="openModal('advanceModal')">→ Advance Stage</button>
+        <button class="btn btn-secondary w-full" style="justify-content:center" onclick="viewWeightHistory(${j.id})">⚖ Weight History</button>
+      </div>
+    `;
+  } catch (e) { showToast('Failed to load job detail', 'error'); }
+}
+
+function closeDetail() {
+  document.getElementById('detailPanel').classList.add('hidden');
+  currentJobId = null;
+}
+
+// Create new job
+async function submitNewJob() {
+  const body = {
+    design_name: document.getElementById('f_design_name').value.trim(),
+    customer_id: parseInt(document.getElementById('f_customer_id').value),
+    metal_type: document.getElementById('f_metal_type').value,
+    target_weight: parseFloat(document.getElementById('f_target_weight').value),
+    order_qty: parseInt(document.getElementById('f_order_qty').value),
+    allowed_wastage_pct: parseFloat(document.getElementById('f_wastage').value),
+    priority: document.getElementById('f_priority').value,
+    expected_delivery: document.getElementById('f_delivery').value || null,
+    notes: document.getElementById('f_notes').value || null,
+  };
+  if (!body.design_name || !body.customer_id || !body.target_weight) {
+    showToast('Please fill required fields', 'error'); return;
+  }
+  try {
+    await API.post('/api/v1/jobs/', body);
+    showToast('Job created successfully!');
+    closeModal('newJobModal');
+    loadJobs();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+// Advance stage
+async function submitAdvance() {
+  if (!currentJobId) return;
+  const weight_out = parseFloat(document.getElementById('adv_weight').value) || 0;
+  const notes = document.getElementById('adv_notes').value;
+  try {
+    const res = await API.post(`/api/v1/jobs/${currentJobId}/advance-stage`, { weight_out, notes });
+    showToast(`Moved to ${res.current_stage}`);
+    closeModal('advanceModal');
+    showDetail(currentJobId);
+    loadJobs();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function viewWeightHistory(jobId) {
+  const logs = await API.get(`/api/v1/scale/history/${jobId}`);
+  alert(logs.length ? logs.map(l=>`${fmtDateTime(l.at)}: ${l.net}g (${l.manual?'Manual':'Scale'})`).join('\n') : 'No weight logs yet');
+}
+
+// Init
+populateSelect('f_customer_id', '/api/v1/customers/', 'id', 'name');
+loadJobs();
+</script>
+{% endblock %}

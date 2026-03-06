@@ -1,0 +1,109 @@
+<!-- METAL LEDGER PAGE -->
+{% extends "base.html" %}
+{% block title %}Metal Ledger{% endblock %}
+{% block page_title %}Metal Ledger{% endblock %}
+{% block page_subtitle %}METAL ACCOUNTING & RECONCILIATION{% endblock %}
+{% block content %}
+<div class="metric-grid" style="grid-template-columns:repeat(3,1fr)">
+  <div class="metric-card"><div class="metric-label">Total Issued</div><div class="metric-value text-orange" id="mIssued">—</div><div class="metric-sub">Gross weight</div></div>
+  <div class="metric-card"><div class="metric-label">Total Returned</div><div class="metric-value text-green" id="mReturned">—</div><div class="metric-sub">Gross weight</div></div>
+  <div class="metric-card"><div class="metric-label">Net Outstanding</div><div class="metric-value text-gold" id="mOutstanding">—</div><div class="metric-sub">With karigars/depts</div></div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 260px;gap:14px">
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Transaction Ledger</span>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-secondary btn-sm" onclick="openModal('issueModal')">Issue Metal</button>
+        <button class="btn btn-primary btn-sm" onclick="openModal('returnModal')">Return Metal</button>
+      </div>
+    </div>
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead><tr><th>Type</th><th>Metal</th><th>Weight</th><th>Purity</th><th>Fine Wt</th><th>To/From</th><th>Value</th><th>Date</th></tr></thead>
+        <tbody id="ledgerBody"><tr><td colspan="8" class="empty-state">Loading...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">Current Stock</span></div>
+    <div class="card-body" id="stockBody"><div class="empty-state">Loading...</div></div>
+  </div>
+</div>
+
+<!-- Issue Modal -->
+<div class="modal-overlay hidden" id="issueModal">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title">Issue Metal</span><button class="modal-close" onclick="closeModal('issueModal')">×</button></div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Metal Type</label><select id="im_metal" class="form-control"><option value="22K">22K Gold</option><option value="24K">24K Gold</option><option value="18K">18K Gold</option><option value="Silver">Silver</option></select></div>
+        <div class="form-group"><label class="form-label">Weight (g)</label><input id="im_weight" type="number" step="0.001" class="form-control"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Purity (%)</label><input id="im_purity" type="number" step="0.01" class="form-control" value="91.6"></div>
+        <div class="form-group"><label class="form-label">Rate (₹/g)</label><input id="im_rate" type="number" step="0.01" class="form-control"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Issue To Type</label><select id="im_to_type" class="form-control"><option value="Department">Department</option><option value="Karigar">Karigar</option></select></div>
+        <div class="form-group"><label class="form-label">Name</label><input id="im_to_name" class="form-control" placeholder="e.g. Casting Dept"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Notes</label><textarea id="im_notes" class="form-control" rows="2"></textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('issueModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitIssue()">Issue Metal</button>
+    </div>
+  </div>
+</div>
+
+<!-- Return Modal -->
+<div class="modal-overlay hidden" id="returnModal">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title">Return Metal</span><button class="modal-close" onclick="closeModal('returnModal')">×</button></div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Metal Type</label><select id="rm_metal" class="form-control"><option value="22K">22K Gold</option><option value="24K">24K Gold</option><option value="18K">18K</option><option value="Silver">Silver</option></select></div>
+        <div class="form-group"><label class="form-label">Weight (g)</label><input id="rm_weight" type="number" step="0.001" class="form-control"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Purity (%)</label><input id="rm_purity" type="number" step="0.01" class="form-control" value="91.6"></div>
+        <div class="form-group"><label class="form-label">From Name</label><input id="rm_from_name" class="form-control"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Notes</label><textarea id="rm_notes" class="form-control" rows="2"></textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('returnModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitReturn()">Record Return</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+async function loadMetal() {
+  const [recon, ledger] = await Promise.all([API.get('/api/v1/metal/reconciliation'), API.get('/api/v1/metal/ledger')]);
+  document.getElementById('mIssued').textContent = recon.total_issued.toFixed(3) + 'g';
+  document.getElementById('mReturned').textContent = recon.total_returned.toFixed(3) + 'g';
+  document.getElementById('mOutstanding').textContent = recon.net_outstanding.toFixed(3) + 'g';
+  document.getElementById('stockBody').innerHTML = recon.current_stock.map(s=>`<div class="detail-row"><span class="detail-label">${s.metal}</span><span class="detail-value text-gold">${parseFloat(s.qty).toFixed(3)}g</span></div>`).join('');
+  const typeMap = {Issue:'badge-orange',Return:'badge-green',Adjustment:'badge-blue','Refinery Out':'badge-purple','Refinery In':'badge-gold'};
+  document.getElementById('ledgerBody').innerHTML = ledger.items.map(t=>`
+    <tr><td><span class="badge ${typeMap[t.type]||'badge-gray'}">${t.type}</span></td>
+    <td>${metalBadge(t.metal)}</td><td>${parseFloat(t.weight).toFixed(3)}g</td>
+    <td class="text-muted">${t.purity||'—'}%</td><td>${t.fine_weight?parseFloat(t.fine_weight).toFixed(3)+'g':'—'}</td>
+    <td>${t.to_name||'—'}</td><td>${t.value?fmtCur(t.value):'—'}</td>
+    <td class="text-muted text-sm">${fmtDateTime(t.created_at)}</td></tr>`).join('');
+}
+async function submitIssue() {
+  const b = {metal_type:document.getElementById('im_metal').value,weight:parseFloat(document.getElementById('im_weight').value),purity:parseFloat(document.getElementById('im_purity').value),rate:parseFloat(document.getElementById('im_rate').value),issued_to_type:document.getElementById('im_to_type').value,issued_to_id:1,issued_to_name:document.getElementById('im_to_name').value,notes:document.getElementById('im_notes').value||null};
+  try{await API.post('/api/v1/metal/issue',b);showToast('Metal issued');closeModal('issueModal');loadMetal();}catch(e){showToast(e.message,'error');}
+}
+async function submitReturn() {
+  const b = {metal_type:document.getElementById('rm_metal').value,weight:parseFloat(document.getElementById('rm_weight').value),purity:parseFloat(document.getElementById('rm_purity').value),from_type:'Karigar',from_id:1,from_name:document.getElementById('rm_from_name').value,notes:document.getElementById('rm_notes').value||null};
+  try{await API.post('/api/v1/metal/return',b);showToast('Metal return recorded');closeModal('returnModal');loadMetal();}catch(e){showToast(e.message,'error');}
+}
+loadMetal();
+</script>
+{% endblock %}

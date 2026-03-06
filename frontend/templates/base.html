@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Sona ERP{% endblock %} — Jewellery Manufacturing</title>
+  <link rel="stylesheet" href="/static/css/main.css">
+  {% block extra_css %}{% endblock %}
+</head>
+<body>
+<div class="app-layout">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-gem"></div>
+      <div>
+        <div class="logo-text">Sona ERP</div>
+        <div class="logo-sub">Manufacturing System</div>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section">
+        <div class="nav-section-label">Overview</div>
+        <a href="/" class="nav-item {% if active_page == 'dashboard' %}active{% endif %}">
+          <span class="nav-icon">⬡</span> Dashboard
+        </a>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-label">Production</div>
+        <a href="/jobs" class="nav-item {% if active_page == 'jobs' %}active{% endif %}">
+          <span class="nav-icon">◈</span> Job Orders
+        </a>
+        <a href="/metal" class="nav-item {% if active_page == 'metal' %}active{% endif %}">
+          <span class="nav-icon">◎</span> Metal Ledger
+        </a>
+        <a href="/karigar" class="nav-item {% if active_page == 'karigar' %}active{% endif %}">
+          <span class="nav-icon">✦</span> Karigar
+        </a>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-label">Materials</div>
+        <a href="/inventory" class="nav-item {% if active_page == 'inventory' %}active{% endif %}">
+          <span class="nav-icon">⊞</span> Inventory
+        </a>
+        <a href="/scrap" class="nav-item {% if active_page == 'scrap' %}active{% endif %}">
+          <span class="nav-icon">⋯</span> Scrap
+        </a>
+        <a href="/refinery" class="nav-item {% if active_page == 'refinery' %}active{% endif %}">
+          <span class="nav-icon">⟳</span> Refinery
+        </a>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-label">Finance</div>
+        <a href="/costing" class="nav-item {% if active_page == 'costing' %}active{% endif %}">
+          <span class="nav-icon">₹</span> Costing
+        </a>
+        <a href="/reports" class="nav-item {% if active_page == 'reports' %}active{% endif %}">
+          <span class="nav-icon">↗</span> Reports
+        </a>
+      </div>
+
+      <div class="nav-section">
+        <div class="nav-section-label">Admin</div>
+        <a href="/users" class="nav-item {% if active_page == 'users' %}active{% endif %}">
+          <span class="nav-icon">⊙</span> Users
+        </a>
+      </div>
+    </nav>
+
+    <div class="sidebar-user">
+      <div class="user-avatar">{{ user.name[0].upper() if user else 'A' }}</div>
+      <div>
+        <div class="user-name">{{ user.name if user else 'Admin' }}</div>
+        <div class="user-role">{{ user.role.name if user else 'Admin' }}</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN CONTENT -->
+  <div class="main-content">
+    <div class="top-bar">
+      <div>
+        <div class="page-title">{% block page_title %}Dashboard{% endblock %}</div>
+        <div class="page-subtitle">{% block page_subtitle %}{% endblock %}</div>
+      </div>
+      <div class="top-bar-right">
+        <div class="live-dot"><div class="dot"></div> LIVE</div>
+        <button class="btn btn-secondary btn-sm" onclick="logout()">Sign Out</button>
+      </div>
+    </div>
+
+    <div class="page-body">
+      {% block content %}{% endblock %}
+    </div>
+  </div>
+
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<script src="/static/js/main.js"></script>
+{% block extra_js %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Scrap{% endblock %}
+{% block page_title %}Scrap Management{% endblock %}
+{% block page_subtitle %}SCRAP COLLECTION & BATCH TRACKING{% endblock %}
+{% block content %}
+<div style="display:grid;grid-template-columns:1fr 260px;gap:14px">
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Scrap Batches</span>
+      <button class="btn btn-primary btn-sm" onclick="openModal('newScrapModal')">+ Record Scrap</button>
+    </div>
+    <table class="data-table">
+      <thead><tr><th>Batch ID</th><th>Type</th><th>Gross Wt</th><th>Est Purity</th><th>Est Fine Wt</th><th>Status</th><th>Date</th></tr></thead>
+      <tbody id="scrapBody"><tr><td colspan="7" class="empty-state">Loading...</td></tr></tbody>
+    </table>
+  </div>
+  <div class="card">
+    <div class="card-header"><span class="card-title">Scrap Summary</span></div>
+    <div class="card-body" id="scrapSummary"></div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="newScrapModal">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title">Record Scrap Collection</span><button class="modal-close" onclick="closeModal('newScrapModal')">×</button></div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Source Department</label><select id="sc_dept" class="form-control"></select></div>
+        <div class="form-group"><label class="form-label">Scrap Type</label><select id="sc_type" class="form-control"><option value="Filing">Filing</option><option value="Casting">Casting</option><option value="Polishing Dust">Polishing Dust</option><option value="Broken Pieces">Broken Pieces</option><option value="Other">Other</option></select></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Gross Weight (g)</label><input id="sc_weight" type="number" step="0.0001" class="form-control"></div>
+        <div class="form-group"><label class="form-label">Estimated Purity (%)</label><input id="sc_purity" type="number" step="0.01" class="form-control" value="75"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Notes</label><textarea id="sc_notes" class="form-control" rows="2"></textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('newScrapModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitScrap()">Record Scrap</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+const STATUS_COLOR = {Collected:'badge-blue','In Stock':'badge-gold','Sent to Refinery':'badge-orange',Settled:'badge-green'};
+async function loadScrap() {
+  const [data, summary] = await Promise.all([API.get('/api/v1/scrap/'), API.get('/api/v1/scrap/summary')]);
+  document.getElementById('scrapBody').innerHTML = data.map(s=>`
+    <tr><td class="text-gold">${s.batch_id}</td><td>${s.scrap_type}</td>
+    <td>${parseFloat(s.gross_weight).toFixed(4)}g</td>
+    <td class="text-muted">${s.estimated_purity||'—'}%</td>
+    <td class="text-muted">${s.estimated_fine?parseFloat(s.estimated_fine).toFixed(4)+'g':'—'}</td>
+    <td><span class="badge ${STATUS_COLOR[s.status]||'badge-gray'}">${s.status}</span></td>
+    <td class="text-muted text-sm">${fmtDate(s.collected_at)}</td></tr>`).join('') || '<tr><td colspan="7" class="empty-state">No scrap entries</td></tr>';
+  document.getElementById('scrapSummary').innerHTML = `
+    <div class="detail-row"><span class="detail-label">Total Scrap</span><span class="detail-value text-gold">${parseFloat(summary.total_scrap_weight).toFixed(3)}g</span></div>
+    ${Object.entries(summary.by_type||{}).map(([t,w])=>`<div class="detail-row"><span class="detail-label">${t}</span><span class="detail-value">${parseFloat(w).toFixed(3)}g</span></div>`).join('')}`;
+}
+async function submitScrap() {
+  const b={source_department_id:parseInt(document.getElementById('sc_dept').value),scrap_type:document.getElementById('sc_type').value,gross_weight:parseFloat(document.getElementById('sc_weight').value),estimated_purity:parseFloat(document.getElementById('sc_purity').value),notes:document.getElementById('sc_notes').value||null};
+  try{await API.post('/api/v1/scrap/',b);showToast('Scrap batch recorded');closeModal('newScrapModal');loadScrap();}catch(e){showToast(e.message,'error');}
+}
+populateSelect('sc_dept','/api/v1/departments/','id','name');
+loadScrap();
+</script>
+{% endblock %}

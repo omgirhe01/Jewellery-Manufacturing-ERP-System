@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Refinery{% endblock %}
+{% block page_title %}Refinery Management{% endblock %}
+{% block page_subtitle %}SCRAP DISPATCH & SETTLEMENT{% endblock %}
+{% block content %}
+<div class="card" style="margin-bottom:16px">
+  <div class="card-header">
+    <span class="card-title">Refinery Dispatches</span>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-secondary btn-sm" onclick="openModal('settleModal')">Record Settlement</button>
+      <button class="btn btn-primary btn-sm" onclick="openModal('dispatchModal')">+ New Dispatch</button>
+    </div>
+  </div>
+  <table class="data-table">
+    <thead><tr><th>Dispatch No</th><th>Refinery</th><th>Date</th><th>Gross Wt</th><th>Est Purity</th><th>Expected Fine</th><th>Status</th></tr></thead>
+    <tbody id="refineryBody"><tr><td colspan="7" class="empty-state">Loading...</td></tr></tbody>
+  </table>
+</div>
+
+<div class="modal-overlay hidden" id="dispatchModal">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title">New Refinery Dispatch</span><button class="modal-close" onclick="closeModal('dispatchModal')">×</button></div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Refinery Name *</label><input id="rd_name" class="form-control" placeholder="e.g. Mehta Refinery"></div>
+        <div class="form-group"><label class="form-label">Dispatch Date *</label><input id="rd_date" type="date" class="form-control"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Gross Weight (g)</label><input id="rd_weight" type="number" step="0.0001" class="form-control"></div>
+        <div class="form-group"><label class="form-label">Estimated Purity (%)</label><input id="rd_purity" type="number" step="0.01" class="form-control"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Notes</label><textarea id="rd_notes" class="form-control" rows="2"></textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('dispatchModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitDispatch()">Create Dispatch</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="settleModal">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title">Record Settlement</span><button class="modal-close" onclick="closeModal('settleModal')">×</button></div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Dispatch *</label><select id="rs_dispatch" class="form-control"></select></div>
+        <div class="form-group"><label class="form-label">Settlement Date *</label><input id="rs_date" type="date" class="form-control"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Fine Gold Received (g)</label><input id="rs_fine" type="number" step="0.0001" class="form-control"></div>
+        <div class="form-group"><label class="form-label">Refining Charges (₹)</label><input id="rs_charges" type="number" step="0.01" class="form-control" value="0"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Notes</label><textarea id="rs_notes" class="form-control" rows="2"></textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('settleModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitSettlement()">Settle</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+let dispatches = [];
+async function loadRefinery() {
+  dispatches = await API.get('/api/v1/refinery/');
+  const S={Dispatched:'badge-orange',Settled:'badge-green',Partial:'badge-blue'};
+  document.getElementById('refineryBody').innerHTML = dispatches.map(d=>`
+    <tr><td class="text-gold">${d.dispatch_no}</td><td>${d.refinery}</td><td>${fmtDate(d.date)}</td>
+    <td>${parseFloat(d.gross_weight).toFixed(4)}g</td>
+    <td class="text-muted">${d.expected_fine?parseFloat(d.expected_fine).toFixed(4)+'g':'—'}</td>
+    <td class="text-muted">${d.expected_fine?parseFloat(d.expected_fine).toFixed(4)+'g':'—'}</td>
+    <td><span class="badge ${S[d.status]||'badge-gray'}">${d.status}</span></td></tr>`).join('');
+  document.getElementById('rs_dispatch').innerHTML = dispatches.filter(d=>d.status==='Dispatched').map(d=>`<option value="${d.id}">${d.dispatch_no} — ${d.refinery}</option>`).join('');
+}
+async function submitDispatch() {
+  const b={refinery_name:document.getElementById('rd_name').value,dispatch_date:document.getElementById('rd_date').value,gross_weight:parseFloat(document.getElementById('rd_weight').value),estimated_purity:parseFloat(document.getElementById('rd_purity').value),notes:document.getElementById('rd_notes').value||null};
+  try{await API.post('/api/v1/refinery/dispatch',b);showToast('Dispatch created');closeModal('dispatchModal');loadRefinery();}catch(e){showToast(e.message,'error');}
+}
+async function submitSettlement() {
+  const b={dispatch_id:parseInt(document.getElementById('rs_dispatch').value),settlement_date:document.getElementById('rs_date').value,fine_gold_received:parseFloat(document.getElementById('rs_fine').value),refining_charges:parseFloat(document.getElementById('rs_charges').value)||0,settlement_notes:document.getElementById('rs_notes').value||null};
+  try{const r=await API.post('/api/v1/refinery/settle',b);showToast(`Settled. Recovery: ${r.recovery_pct}%`);closeModal('settleModal');loadRefinery();}catch(e){showToast(e.message,'error');}
+}
+loadRefinery();
+</script>
+{% endblock %}

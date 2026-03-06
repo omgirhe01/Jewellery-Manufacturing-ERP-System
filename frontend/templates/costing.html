@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Costing{% endblock %}
+{% block page_title %}Costing{% endblock %}
+{% block page_subtitle %}JOB COST ANALYSIS & PROFITABILITY{% endblock %}
+{% block content %}
+<div style="display:grid;grid-template-columns:260px 1fr;gap:14px">
+  <div class="card">
+    <div class="card-header"><span class="card-title">Select Job</span></div>
+    <div class="card-body" style="padding:10px">
+      <input class="search-input" id="costSearch" placeholder="Search job..." style="width:100%;margin-bottom:8px">
+      <div id="costJobList" style="max-height:480px;overflow:auto"></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title" id="costingTitle">Cost Calculator</span>
+      <button class="btn btn-primary btn-sm hidden" id="saveBtn" onclick="saveCost()">Save Cost</button>
+    </div>
+    <div class="card-body" id="costingBody">
+      <div class="empty-state" style="padding:48px">Select a job to view or enter cost details</div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+let selectedJobId = null;
+async function loadJobList(q='') {
+  const data = await API.get(`/api/v1/jobs/?per_page=50${q?'&q='+encodeURIComponent(q):''}`);
+  document.getElementById('costJobList').innerHTML = data.items.map(j=>`
+    <div onclick="selectJob(${j.id},'${j.job_code}')" style="padding:10px 12px;border-radius:4px;cursor:pointer;margin-bottom:2px;background:#0e0d0b;border:1px solid #2a2318" class="job-list-item">
+      <div class="text-gold text-sm bold">${j.job_code}</div>
+      <div class="text-xs text-muted">${j.design_name} · ${j.customer_name}</div>
+    </div>`).join('');
+}
+document.getElementById('costSearch').addEventListener('input', debounce(e=>loadJobList(e.target.value)));
+
+async function selectJob(id, code) {
+  selectedJobId = id;
+  document.getElementById('costingTitle').textContent = `Costing — ${code}`;
+  document.getElementById('saveBtn').classList.remove('hidden');
+  let existing = {};
+  try { existing = await API.get(`/api/costing/job/${id}`); } catch(e) {}
+  const fields = [
+    ['gold_cost', 'Gold Cost (₹)', existing.gold_cost||0],
+    ['labour_cost', 'Labour Cost (₹)', existing.labour_cost||0],
+    ['stone_cost', 'Stone Cost (₹)', existing.stone_cost||0],
+    ['wastage_cost', 'Wastage Cost (₹)', existing.wastage_cost||0],
+    ['refinery_adjustment', 'Refinery Adjustment (₹)', existing.refinery_adjustment||0],
+    ['overhead_cost', 'Overhead Cost (₹)', existing.overhead_cost||0],
+    ['sale_price', 'Sale Price (₹)', existing.sale_price||0],
+  ];
+  document.getElementById('costingBody').innerHTML = `
+    <div class="form-row-3">
+      ${fields.map(([id,lbl,val])=>`<div class="form-group"><label class="form-label">${lbl}</label><input id="c_${id}" type="number" step="0.01" class="form-control" value="${val}" onchange="calcTotal()"></div>`).join('')}
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:16px">
+      <div class="metric-card"><div class="metric-label">Total Cost</div><div class="metric-value text-orange" id="c_total">${fmtCur(existing.total_cost||0)}</div></div>
+      <div class="metric-card"><div class="metric-label">Sale Price</div><div class="metric-value text-gold" id="c_sale">${fmtCur(existing.sale_price||0)}</div></div>
+      <div class="metric-card"><div class="metric-label">Profit / Loss</div><div class="metric-value ${(existing.profit_loss||0)>=0?'text-green':'text-red'}" id="c_profit">${fmtCur(existing.profit_loss||0)}</div></div>
+      <div class="metric-card"><div class="metric-label">Margin</div><div class="metric-value text-green" id="c_margin">${existing.sale_price?fmtPct((existing.profit_loss/existing.sale_price)*100):'—'}</div></div>
+    </div>`;
+}
+function calcTotal() {
+  const fields = ['gold_cost','labour_cost','stone_cost','wastage_cost','refinery_adjustment','overhead_cost'];
+  const total = fields.reduce((sum,f)=>sum+parseFloat(document.getElementById('c_'+f).value||0),0);
+  const sale = parseFloat(document.getElementById('c_sale_price')?.value||document.getElementById('c_sale_price')?.textContent||0);
+  document.getElementById('c_total').textContent = fmtCur(total);
+}
+async function saveCost() {
+  const b={job_id:selectedJobId,gold_cost:parseFloat(document.getElementById('c_gold_cost').value)||0,labour_cost:parseFloat(document.getElementById('c_labour_cost').value)||0,stone_cost:parseFloat(document.getElementById('c_stone_cost').value)||0,wastage_cost:parseFloat(document.getElementById('c_wastage_cost').value)||0,refinery_adjustment:parseFloat(document.getElementById('c_refinery_adjustment').value)||0,overhead_cost:parseFloat(document.getElementById('c_overhead_cost').value)||0,sale_price:parseFloat(document.getElementById('c_sale_price').value)||0};
+  try{const r=await API.post('/api/v1/costing/calculate',b);showToast(`Saved. Profit: ${fmtCur(r.profit_loss)}`);selectJob(selectedJobId,'');}catch(e){showToast(e.message,'error');}
+}
+loadJobList();
+</script>
+{% endblock %}

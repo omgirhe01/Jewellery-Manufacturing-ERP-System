@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Inventory{% endblock %}
+{% block page_title %}Inventory{% endblock %}
+{% block page_subtitle %}RAW, WIP & FINISHED GOODS{% endblock %}
+{% block content %}
+<div class="toolbar" style="margin-bottom:16px;background:#13110e;border:1px solid #2a2318;border-radius:8px">
+  <div class="toolbar-left">
+    <div class="tab-group">
+      <button class="tab active" data-cat="">All</button>
+      <button class="tab" data-cat="Gold">Gold</button>
+      <button class="tab" data-cat="Silver">Silver</button>
+      <button class="tab" data-cat="Stone">Stone</button>
+      <button class="tab" data-cat="Consumable">Consumable</button>
+      <button class="tab" data-cat="Finished Good">Finished</button>
+    </div>
+  </div>
+  <div class="toolbar-right">
+    <button class="btn btn-secondary btn-sm" onclick="openModal('adjustModal')">Adjust Stock</button>
+    <button class="btn btn-primary btn-sm" onclick="openModal('newItemModal')">+ Add Item</button>
+  </div>
+</div>
+
+<div class="card">
+  <table class="data-table">
+    <thead><tr><th>Code</th><th>Name</th><th>Category</th><th>Unit</th><th>Current Stock</th><th>Reorder Level</th><th>Status</th></tr></thead>
+    <tbody id="inventoryBody"><tr><td colspan="7" class="empty-state">Loading...</td></tr></tbody>
+  </table>
+</div>
+
+<div class="modal-overlay hidden" id="newItemModal">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title">Add Inventory Item</span><button class="modal-close" onclick="closeModal('newItemModal')">×</button></div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Name *</label><input id="ni_name" class="form-control"></div>
+        <div class="form-group"><label class="form-label">Category *</label><select id="ni_cat" class="form-control"><option value="Gold">Gold</option><option value="Silver">Silver</option><option value="Stone">Stone</option><option value="Consumable">Consumable</option><option value="WIP">WIP</option><option value="Finished Good">Finished Good</option></select></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Unit</label><input id="ni_unit" class="form-control" placeholder="g / pcs / ml"></div>
+        <div class="form-group"><label class="form-label">Reorder Level</label><input id="ni_reorder" type="number" step="0.01" class="form-control" value="0"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('newItemModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitItem()">Add Item</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="adjustModal">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title">Adjust Stock</span><button class="modal-close" onclick="closeModal('adjustModal')">×</button></div>
+    <div class="modal-body">
+      <div class="form-group"><label class="form-label">Item</label><select id="adj_item" class="form-control"></select></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Type</label><select id="adj_type" class="form-control"><option value="In">Stock In</option><option value="Out">Stock Out</option><option value="Adjust">Adjust (Set)</option></select></div>
+        <div class="form-group"><label class="form-label">Quantity</label><input id="adj_qty" type="number" step="0.001" class="form-control"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Notes</label><textarea id="adj_notes" class="form-control" rows="2"></textarea></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('adjustModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAdjust()">Update Stock</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+let currentCat = '';
+async function loadInventory() {
+  const url = '/api/v1/inventory/' + (currentCat ? `?category=${encodeURIComponent(currentCat)}` : '');
+  const data = await API.get(url);
+  document.getElementById('inventoryBody').innerHTML = data.map(i=>`
+    <tr><td class="text-gold">${i.code}</td><td class="bold">${i.name}</td>
+    <td><span class="badge badge-gray">${i.category}</span></td>
+    <td class="text-muted">${i.unit}</td>
+    <td class="${i.low_stock?'text-orange':'text-green'}">${parseFloat(i.stock).toFixed(3)}</td>
+    <td class="text-muted">${parseFloat(i.reorder).toFixed(3)}</td>
+    <td><span class="badge ${i.low_stock?'badge-red':'badge-green'}">${i.low_stock?'Low Stock':'OK'}</span></td></tr>`).join('') ||
+    '<tr><td colspan="7" class="empty-state">No items</td></tr>';
+}
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+  t.classList.add('active'); currentCat=t.dataset.cat; loadInventory();
+}));
+async function submitItem() {
+  const b={name:document.getElementById('ni_name').value,category:document.getElementById('ni_cat').value,unit:document.getElementById('ni_unit').value||'pcs',reorder_level:parseFloat(document.getElementById('ni_reorder').value)||0};
+  try{await API.post('/api/v1/inventory/',b);showToast('Item added');closeModal('newItemModal');loadInventory();}catch(e){showToast(e.message,'error');}
+}
+async function openAdjust() {
+  const data=await API.get('/api/v1/inventory/');
+  document.getElementById('adj_item').innerHTML=data.map(i=>`<option value="${i.id}">${i.name} (${i.code})</option>`).join('');
+  openModal('adjustModal');
+}
+async function submitAdjust() {
+  const b={item_id:parseInt(document.getElementById('adj_item').value),transaction_type:document.getElementById('adj_type').value,quantity:parseFloat(document.getElementById('adj_qty').value),notes:document.getElementById('adj_notes').value||null};
+  try{const r=await API.post('/api/v1/inventory/adjust',b);showToast(`Stock updated. Balance: ${r.new_balance}`);closeModal('adjustModal');loadInventory();}catch(e){showToast(e.message,'error');}
+}
+document.querySelector('.btn-secondary.btn-sm').onclick=openAdjust;
+loadInventory();
+</script>
+{% endblock %}

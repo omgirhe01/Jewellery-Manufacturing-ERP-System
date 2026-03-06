@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Login — Sona ERP</title>
+  <link rel="stylesheet" href="/static/css/main.css">
+</head>
+<body>
+<div class="login-page">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="login-gem"></div>
+      <div style="font-family:'Cormorant Garamond',serif;font-size:26px;font-weight:600;color:#e8d89a">Sona ERP</div>
+      <div style="font-size:10px;color:#5a4a2a;letter-spacing:0.1em;margin-top:4px">JEWELLERY MANUFACTURING SYSTEM</div>
+    </div>
+
+    <div id="alert" class="alert alert-error hidden"></div>
+
+    <div class="form-group">
+      <label class="form-label">Username</label>
+      <input id="username" type="text" class="form-control" placeholder="Enter username" autocomplete="username">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Password</label>
+      <input id="password" type="password" class="form-control" placeholder="Enter password" autocomplete="current-password">
+    </div>
+
+    <button class="btn btn-primary w-full" style="justify-content:center;margin-top:8px" onclick="doLogin()">
+      Sign In →
+    </button>
+
+    <div style="margin-top:20px;padding:14px;background:#1a1612;border-radius:6px;font-size:11px;color:#5a4a2a">
+      Default: <strong style="color:#8a7a5a">admin</strong> / <strong style="color:#8a7a5a">admin123</strong>
+    </div>
+  </div>
+</div>
+
+<script>
+async function doLogin() {
+  const username = document.getElementById('username').value.trim();
+  const password = document.getElementById('password').value;
+  const alert = document.getElementById('alert');
+  if (!username || !password) {
+    alert.textContent = 'Please enter username and password'; alert.classList.remove('hidden'); return;
+  }
+  try {
+    const res = await fetch('/api/v1/auth/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ username, password })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Login failed');
+    window.location.href = '/';
+  } catch (e) {
+    alert.textContent = e.message; alert.classList.remove('hidden');
+  }
+}
+document.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+</script>
+</body>
+</html>
