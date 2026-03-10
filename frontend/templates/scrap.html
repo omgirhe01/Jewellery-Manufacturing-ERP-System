@@ -1,67 +1,492 @@
 {% extends "base.html" %}
 {% block title %}Scrap{% endblock %}
 {% block page_title %}Scrap Management{% endblock %}
-{% block page_subtitle %}SCRAP COLLECTION & BATCH TRACKING{% endblock %}
+{% block page_subtitle %}SCRAP COLLECTION · BATCH TRACKING · STATUS MANAGEMENT{% endblock %}
+
 {% block content %}
-<div style="display:grid;grid-template-columns:1fr 260px;gap:14px">
-  <div class="card">
-    <div class="card-header">
-      <span class="card-title">Scrap Batches</span>
-      <button class="btn btn-primary btn-sm" onclick="openModal('newScrapModal')">+ Record Scrap</button>
-    </div>
-    <table class="data-table">
-      <thead><tr><th>Batch ID</th><th>Type</th><th>Gross Wt</th><th>Est Purity</th><th>Est Fine Wt</th><th>Status</th><th>Date</th></tr></thead>
-      <tbody id="scrapBody"><tr><td colspan="7" class="empty-state">Loading...</td></tr></tbody>
-    </table>
+
+<!-- METRIC STRIP -->
+<div class="metric-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px">
+  <div class="metric-card">
+    <div class="metric-label">Total Scrap</div>
+    <div class="metric-value text-orange" id="mTotal">—</div>
+    <div class="metric-sub">Gross weight</div>
   </div>
-  <div class="card">
-    <div class="card-header"><span class="card-title">Scrap Summary</span></div>
-    <div class="card-body" id="scrapSummary"></div>
+  <div class="metric-card">
+    <div class="metric-label">Est. Fine Weight</div>
+    <div class="metric-value text-gold" id="mFine">—</div>
+    <div class="metric-sub">Recoverable gold</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">In Stock</div>
+    <div class="metric-value" style="color:var(--blue)" id="mStock">—</div>
+    <div class="metric-sub">Batches in vault</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">Pending Refinery</div>
+    <div class="metric-value text-orange" id="mPending">—</div>
+    <div class="metric-sub">Not yet dispatched</div>
   </div>
 </div>
 
+<!-- TOOLBAR -->
+<div class="toolbar" style="margin-bottom:16px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px">
+  <div class="toolbar-left">
+    <div class="tab-group">
+      <button class="tab active" onclick="switchTab('batches',this)">Scrap Batches</button>
+      <button class="tab" onclick="switchTab('summary',this)">Summary</button>
+    </div>
+  </div>
+  <div class="toolbar-right">
+    <select id="statusFilter" class="form-control" style="width:160px;padding:6px 10px;font-size:11px" onchange="loadScrap()">
+      <option value="">All Statuses</option>
+      <option value="Collected">Collected</option>
+      <option value="In Stock">In Stock</option>
+      <option value="Sent to Refinery">Sent to Refinery</option>
+      <option value="Settled">Settled</option>
+    </select>
+    {% if user.role.name in ['Admin', 'Production Manager', 'Metal Store Manager'] %}
+    <button class="btn btn-primary btn-sm" onclick="openModal('newScrapModal')">+ Record Scrap</button>
+    {% endif %}
+  </div>
+</div>
+
+<!-- ── TAB: BATCHES ── -->
+<div id="tab-batches">
+  <div style="display:grid;grid-template-columns:1fr 260px;gap:14px">
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Scrap Batches</span>
+        <span class="text-xs text-muted" id="batchCount"></span>
+      </div>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Batch ID</th>
+            <th>Type</th>
+            <th>Gross Wt (g)</th>
+            <th>Est. Purity</th>
+            <th>Est. Fine Wt</th>
+            <th>Status</th>
+            <th>Collected On</th>
+            <th>Notes</th>
+            {% if user.role.name in ['Admin', 'Metal Store Manager'] %}
+            <th>Action</th>
+            {% endif %}
+          </tr>
+        </thead>
+        <tbody id="scrapBody">
+          <tr><td colspan="9" class="empty-state">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Status flow guide -->
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="card">
+        <div class="card-header"><span class="card-title">Status Flow</span></div>
+        <div class="card-body">
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="badge badge-blue">Collected</span>
+              <span class="text-xs text-muted">Just recorded</span>
+            </div>
+            <div style="color:#3a3020;padding-left:10px;font-size:16px">↓</div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="badge badge-gold">In Stock</span>
+              <span class="text-xs text-muted">Stored in vault</span>
+            </div>
+            <div style="color:#3a3020;padding-left:10px;font-size:16px">↓</div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="badge badge-orange">Sent to Refinery</span>
+              <span class="text-xs text-muted">Dispatched</span>
+            </div>
+            <div style="color:#3a3020;padding-left:10px;font-size:16px">↓</div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="badge badge-green">Settled</span>
+              <span class="text-xs text-muted">Recovery done</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><span class="card-title">Quick Stats</span></div>
+        <div class="card-body" id="quickStatsPanel">
+          <div class="empty-state text-xs">Loading...</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── TAB: SUMMARY ── -->
+<div id="tab-summary" class="hidden">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+
+    <div class="card">
+      <div class="card-header"><span class="card-title">By Scrap Type</span></div>
+      <table class="data-table">
+        <thead>
+          <tr><th>Type</th><th>Batches</th><th>Gross Weight</th><th>Share</th></tr>
+        </thead>
+        <tbody id="summaryTypeBody">
+          <tr><td colspan="4" class="empty-state">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><span class="card-title">By Status</span></div>
+      <table class="data-table">
+        <thead>
+          <tr><th>Status</th><th>Batches</th><th>Total Weight</th></tr>
+        </thead>
+        <tbody id="summaryStatusBody">
+          <tr><td colspan="3" class="empty-state">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ════════════════ MODALS ════════════════ -->
+
+<!-- RECORD SCRAP -->
 <div class="modal-overlay hidden" id="newScrapModal">
   <div class="modal">
-    <div class="modal-header"><span class="modal-title">Record Scrap Collection</span><button class="modal-close" onclick="closeModal('newScrapModal')">×</button></div>
+    <div class="modal-header">
+      <span class="modal-title">Record Scrap Collection</span>
+      <button class="modal-close" onclick="closeModal('newScrapModal')">×</button>
+    </div>
     <div class="modal-body">
       <div class="form-row">
-        <div class="form-group"><label class="form-label">Source Department</label><select id="sc_dept" class="form-control"></select></div>
-        <div class="form-group"><label class="form-label">Scrap Type</label><select id="sc_type" class="form-control"><option value="Filing">Filing</option><option value="Casting">Casting</option><option value="Polishing Dust">Polishing Dust</option><option value="Broken Pieces">Broken Pieces</option><option value="Other">Other</option></select></div>
+        <div class="form-group">
+          <label class="form-label">Source Department *</label>
+          <select id="sc_dept" class="form-control">
+            <option value="">Loading...</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Scrap Type *</label>
+          <select id="sc_type" class="form-control">
+            <option value="Filing">Filing</option>
+            <option value="Casting">Casting</option>
+            <option value="Polishing Dust">Polishing Dust</option>
+            <option value="Broken Pieces">Broken Pieces</option>
+            <option value="Wax">Wax</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label class="form-label">Gross Weight (g)</label><input id="sc_weight" type="number" step="0.0001" class="form-control"></div>
-        <div class="form-group"><label class="form-label">Estimated Purity (%)</label><input id="sc_purity" type="number" step="0.01" class="form-control" value="75"></div>
+        <div class="form-group">
+          <label class="form-label">Gross Weight (g) *</label>
+          <input id="sc_weight" type="number" step="0.0001" min="0.0001" class="form-control" placeholder="0.0000" oninput="updateFinePreview()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Estimated Purity (%)</label>
+          <input id="sc_purity" type="number" step="0.01" min="1" max="100" class="form-control" value="75" oninput="updateFinePreview()">
+        </div>
       </div>
-      <div class="form-group"><label class="form-label">Notes</label><textarea id="sc_notes" class="form-control" rows="2"></textarea></div>
+      <!-- Fine weight preview -->
+      <div id="sc_preview" style="background:#13110e;border:1px solid #2a2318;border-radius:6px;padding:10px 14px;margin-bottom:14px;display:none">
+        <div class="text-xs text-muted" style="margin-bottom:4px">Estimated fine gold:</div>
+        <div class="text-gold bold" id="sc_fine_preview" style="font-size:18px">0.0000g</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <textarea id="sc_notes" class="form-control" rows="2" placeholder="Optional remarks..."></textarea>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('newScrapModal')">Cancel</button>
-      <button class="btn btn-primary" onclick="submitScrap()">Record Scrap</button>
+      <button class="btn btn-primary" id="sc_btn" onclick="submitScrap()">Record Scrap</button>
     </div>
   </div>
 </div>
+
+<!-- UPDATE STATUS -->
+<div class="modal-overlay hidden" id="updateStatusModal">
+  <div class="modal" style="width:400px">
+    <div class="modal-header">
+      <span class="modal-title">Update Batch Status</span>
+      <button class="modal-close" onclick="closeModal('updateStatusModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="background:#13110e;border:1px solid #2a2318;border-radius:6px;padding:12px;margin-bottom:14px">
+        <div class="text-xs text-muted" style="margin-bottom:4px">Batch</div>
+        <div class="text-gold bold" id="upd_batch_id">—</div>
+        <div class="text-xs" style="margin-top:4px">
+          Current: <span id="upd_current_status" class="text-muted">—</span>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">New Status *</label>
+        <select id="upd_status" class="form-control">
+          <option value="Collected">Collected</option>
+          <option value="In Stock">In Stock</option>
+          <option value="Sent to Refinery">Sent to Refinery</option>
+          <option value="Settled">Settled</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes (optional)</label>
+        <textarea id="upd_notes" class="form-control" rows="2" placeholder="Reason for change..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('updateStatusModal')">Cancel</button>
+      <button class="btn btn-primary" id="upd_btn" onclick="submitStatusUpdate()">Update Status</button>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
+
 {% block extra_js %}
 <script>
-const STATUS_COLOR = {Collected:'badge-blue','In Stock':'badge-gold','Sent to Refinery':'badge-orange',Settled:'badge-green'};
+// ── Constants ──────────────────────────────────────────────────────────────────
+const STATUS_COLOR = {
+  'Collected':        'badge-blue',
+  'In Stock':         'badge-gold',
+  'Sent to Refinery': 'badge-orange',
+  'Settled':          'badge-green',
+};
+
+// ── State ──────────────────────────────────────────────────────────────────────
+let currentScrapId = null;
+let summaryCache   = null;
+
+// ── Tab switch ─────────────────────────────────────────────────────────────────
+function switchTab(tab, btn) {
+  document.querySelectorAll('.tab-group .tab').forEach(t => t.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  ['batches','summary'].forEach(t =>
+    document.getElementById('tab-' + t).classList.toggle('hidden', t !== tab)
+  );
+  if (tab === 'summary') loadSummaryTab();
+}
+
+// ── Fine weight live preview ───────────────────────────────────────────────────
+function updateFinePreview() {
+  const wt  = parseFloat(document.getElementById('sc_weight').value) || 0;
+  const pur = parseFloat(document.getElementById('sc_purity').value) || 0;
+  const prev = document.getElementById('sc_preview');
+  if (wt > 0 && pur > 0) {
+    document.getElementById('sc_fine_preview').textContent = (wt * pur / 100).toFixed(4) + 'g';
+    prev.style.display = 'block';
+  } else {
+    prev.style.display = 'none';
+  }
+}
+
+// ── Load scrap list ────────────────────────────────────────────────────────────
 async function loadScrap() {
-  const [data, summary] = await Promise.all([API.get('/api/v1/scrap/'), API.get('/api/v1/scrap/summary')]);
-  document.getElementById('scrapBody').innerHTML = data.map(s=>`
-    <tr><td class="text-gold">${s.batch_id}</td><td>${s.scrap_type}</td>
-    <td>${parseFloat(s.gross_weight).toFixed(4)}g</td>
-    <td class="text-muted">${s.estimated_purity||'—'}%</td>
-    <td class="text-muted">${s.estimated_fine?parseFloat(s.estimated_fine).toFixed(4)+'g':'—'}</td>
-    <td><span class="badge ${STATUS_COLOR[s.status]||'badge-gray'}">${s.status}</span></td>
-    <td class="text-muted text-sm">${fmtDate(s.collected_at)}</td></tr>`).join('') || '<tr><td colspan="7" class="empty-state">No scrap entries</td></tr>';
-  document.getElementById('scrapSummary').innerHTML = `
-    <div class="detail-row"><span class="detail-label">Total Scrap</span><span class="detail-value text-gold">${parseFloat(summary.total_scrap_weight).toFixed(3)}g</span></div>
-    ${Object.entries(summary.by_type||{}).map(([t,w])=>`<div class="detail-row"><span class="detail-label">${t}</span><span class="detail-value">${parseFloat(w).toFixed(3)}g</span></div>`).join('')}`;
+  const statusVal = document.getElementById('statusFilter').value;
+  let url = '/api/v1/scrap/';
+  if (statusVal) url += `?status=${encodeURIComponent(statusVal)}`;
+
+  try {
+    const [data, summary] = await Promise.all([
+      API.get(url),
+      API.get('/api/v1/scrap/summary'),
+    ]);
+    summaryCache = summary;
+
+    document.getElementById('batchCount').textContent =
+      `${data.length} batch${data.length !== 1 ? 'es' : ''}`;
+
+    {% if user.role.name in ['Admin', 'Metal Store Manager'] %}
+    const canEdit = true;
+    {% else %}
+    const canEdit = false;
+    {% endif %}
+
+    document.getElementById('scrapBody').innerHTML = data.length
+      ? data.map(s => `
+        <tr>
+          <td class="text-gold bold" style="font-family:monospace">${s.batch_id}</td>
+          <td>${s.scrap_type}</td>
+          <td style="font-family:monospace">${parseFloat(s.gross_weight).toFixed(4)}</td>
+          <td class="text-muted">${s.estimated_purity != null ? parseFloat(s.estimated_purity).toFixed(2) + '%' : '—'}</td>
+          <td style="font-family:monospace;color:var(--gold)">${s.estimated_fine != null ? parseFloat(s.estimated_fine).toFixed(4) + 'g' : '—'}</td>
+          <td><span class="badge ${STATUS_COLOR[s.status] || 'badge-gray'}">${s.status}</span></td>
+          <td class="text-muted text-sm">${fmtDate(s.collected_at)}</td>
+          <td class="text-muted text-sm" style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.notes || '—'}</td>
+          ${canEdit
+            ? `<td><button class="btn btn-secondary btn-sm" onclick="openUpdateStatus(${s.id},'${s.batch_id}','${s.status}')">Change Status</button></td>`
+            : ''}
+        </tr>`).join('')
+      : `<tr><td colspan="9" class="empty-state">No scrap batches${statusVal ? ' · Status: ' + statusVal : ''}</td></tr>`;
+
+    renderMetrics(summary);
+    renderQuickStats(summary);
+  } catch(e) {
+    showToast('Failed to load scrap data', 'error');
+  }
 }
+
+// ── Render KPI metrics ─────────────────────────────────────────────────────────
+function renderMetrics(s) {
+  document.getElementById('mTotal').textContent   = parseFloat(s.total_scrap_weight || 0).toFixed(3) + 'g';
+  document.getElementById('mFine').textContent    = parseFloat(s.total_fine_weight  || 0).toFixed(3) + 'g';
+  const stockData   = s.by_status?.['In Stock']         || {};
+  const pendingData = s.by_status?.['Collected']        || {};
+  document.getElementById('mStock').textContent   = (stockData.count   || 0) + ' batches';
+  document.getElementById('mPending').textContent = (pendingData.count || 0) + ' batches';
+}
+
+// ── Quick stats right panel ────────────────────────────────────────────────────
+function renderQuickStats(s) {
+  const byStatus = s.by_status || {};
+  const total    = Object.values(byStatus).reduce((a, v) => a + (v.count || 0), 0);
+
+  document.getElementById('quickStatsPanel').innerHTML = `
+    <div class="detail-row">
+      <span class="detail-label">Total Batches</span>
+      <span class="detail-value text-gold">${total}</span>
+    </div>
+    <div class="detail-row">
+      <span class="detail-label">Total Weight</span>
+      <span class="detail-value">${parseFloat(s.total_scrap_weight || 0).toFixed(3)}g</span>
+    </div>
+    <div class="detail-row">
+      <span class="detail-label">Est. Fine Gold</span>
+      <span class="detail-value text-gold">${parseFloat(s.total_fine_weight || 0).toFixed(3)}g</span>
+    </div>
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+      <div class="text-xs text-muted" style="text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px">By Status</div>
+      ${Object.entries(byStatus).map(([st, v]) => `
+        <div style="margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px">
+            <span class="badge ${STATUS_COLOR[st] || 'badge-gray'}" style="font-size:9px">${st}</span>
+            <span class="text-muted">${v.count} · ${parseFloat(v.weight || 0).toFixed(2)}g</span>
+          </div>
+          <div style="height:3px;background:var(--border);border-radius:2px">
+            <div style="height:100%;width:${total > 0 ? Math.round(v.count/total*100) : 0}%;background:var(--gold);border-radius:2px"></div>
+          </div>
+        </div>`).join('')}
+    </div>`;
+}
+
+// ── Summary tab ────────────────────────────────────────────────────────────────
+async function loadSummaryTab() {
+  try {
+    const s = summaryCache || await API.get('/api/v1/scrap/summary');
+    summaryCache = s;
+
+    // By type table
+    const totalWt = parseFloat(s.total_scrap_weight || 0);
+    const byType  = s.by_type || {};
+    document.getElementById('summaryTypeBody').innerHTML = Object.entries(byType).length
+      ? Object.entries(byType)
+          .sort((a, b) => b[1].weight - a[1].weight)
+          .map(([type, v]) => {
+            const share = totalWt > 0 ? Math.round(parseFloat(v.weight) / totalWt * 100) : 0;
+            return `<tr>
+              <td class="bold">${type}</td>
+              <td>${v.count}</td>
+              <td style="font-family:monospace">${parseFloat(v.weight).toFixed(3)}g</td>
+              <td>
+                <div style="display:flex;align-items:center;gap:8px">
+                  <div style="width:60px;height:4px;background:var(--border);border-radius:2px">
+                    <div style="width:${share}%;height:100%;background:var(--gold);border-radius:2px"></div>
+                  </div>
+                  <span style="color:var(--text-muted);font-size:11px">${share}%</span>
+                </div>
+              </td>
+            </tr>`;
+          }).join('')
+      : '<tr><td colspan="4" class="empty-state">No data</td></tr>';
+
+    // By status table
+    const byStatus = s.by_status || {};
+    document.getElementById('summaryStatusBody').innerHTML = Object.entries(byStatus).length
+      ? Object.entries(byStatus).map(([st, v]) => `
+          <tr>
+            <td><span class="badge ${STATUS_COLOR[st] || 'badge-gray'}">${st}</span></td>
+            <td>${v.count}</td>
+            <td style="font-family:monospace">${parseFloat(v.weight || 0).toFixed(3)}g</td>
+          </tr>`).join('')
+      : '<tr><td colspan="3" class="empty-state">No data</td></tr>';
+  } catch(e) {
+    showToast('Failed to load summary', 'error');
+  }
+}
+
+// ── Record scrap ───────────────────────────────────────────────────────────────
 async function submitScrap() {
-  const b={source_department_id:parseInt(document.getElementById('sc_dept').value),scrap_type:document.getElementById('sc_type').value,gross_weight:parseFloat(document.getElementById('sc_weight').value),estimated_purity:parseFloat(document.getElementById('sc_purity').value),notes:document.getElementById('sc_notes').value||null};
-  try{await API.post('/api/v1/scrap/',b);showToast('Scrap batch recorded');closeModal('newScrapModal');loadScrap();}catch(e){showToast(e.message,'error');}
+  const deptId = parseInt(document.getElementById('sc_dept').value);
+  const weight = parseFloat(document.getElementById('sc_weight').value);
+  const purity = parseFloat(document.getElementById('sc_purity').value);
+
+  if (!deptId)                           return showToast('Select a department', 'error');
+  if (!weight || weight <= 0)            return showToast('Weight is required', 'error');
+  if (!purity || purity <= 0 || purity > 100) return showToast('Invalid purity', 'error');
+
+  const btn = document.getElementById('sc_btn');
+  btn.disabled = true; btn.textContent = 'Recording...';
+
+  try {
+    const res = await API.post('/api/v1/scrap/', {
+      source_department_id: deptId,
+      scrap_type:           document.getElementById('sc_type').value,
+      gross_weight:         weight,
+      estimated_purity:     purity,
+      notes:                document.getElementById('sc_notes').value || null,
+    });
+    showToast(`Batch ${res.batch_id} recorded — Est. fine: ${parseFloat(res.estimated_fine_weight || 0).toFixed(4)}g`);
+    closeModal('newScrapModal');
+    ['sc_weight','sc_notes'].forEach(id => { document.getElementById(id).value = ''; });
+    document.getElementById('sc_purity').value = '75';
+    document.getElementById('sc_preview').style.display = 'none';
+    loadScrap();
+  } catch(e) {
+    showToast(e.message || 'Failed to record scrap', 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Record Scrap';
+  }
 }
-populateSelect('sc_dept','/api/v1/departments/','id','name');
+
+// ── Update status ──────────────────────────────────────────────────────────────
+function openUpdateStatus(id, batchId, currentStatus) {
+  currentScrapId = id;
+  document.getElementById('upd_batch_id').textContent      = batchId;
+  document.getElementById('upd_current_status').textContent = currentStatus;
+  document.getElementById('upd_status').value              = currentStatus;
+  document.getElementById('upd_notes').value               = '';
+  openModal('updateStatusModal');
+}
+
+async function submitStatusUpdate() {
+  if (!currentScrapId) return;
+  const status = document.getElementById('upd_status').value;
+  const notes  = document.getElementById('upd_notes').value || null;
+  let url = `/api/v1/scrap/${currentScrapId}/status?status=${encodeURIComponent(status)}`;
+  if (notes) url += `&notes=${encodeURIComponent(notes)}`;
+
+  const btn = document.getElementById('upd_btn');
+  btn.disabled = true; btn.textContent = 'Updating...';
+
+  try {
+    const res = await API.put(url);
+    showToast(`${res.batch_id}: ${res.old_status} → ${res.new_status}`);
+    closeModal('updateStatusModal');
+    loadScrap();
+  } catch(e) {
+    showToast(e.message || 'Failed to update status', 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Update Status';
+  }
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────────
+populateSelect('sc_dept', '/api/v1/departments/', 'id', 'name', '— Select Dept —');
 loadScrap();
 </script>
 {% endblock %}

@@ -2,108 +2,664 @@
 {% extends "base.html" %}
 {% block title %}Metal Ledger{% endblock %}
 {% block page_title %}Metal Ledger{% endblock %}
-{% block page_subtitle %}METAL ACCOUNTING & RECONCILIATION{% endblock %}
+{% block page_subtitle %}METAL ACCOUNTING · ISSUE · RETURN · RECONCILIATION{% endblock %}
+
 {% block content %}
-<div class="metric-grid" style="grid-template-columns:repeat(3,1fr)">
-  <div class="metric-card"><div class="metric-label">Total Issued</div><div class="metric-value text-orange" id="mIssued">—</div><div class="metric-sub">Gross weight</div></div>
-  <div class="metric-card"><div class="metric-label">Total Returned</div><div class="metric-value text-green" id="mReturned">—</div><div class="metric-sub">Gross weight</div></div>
-  <div class="metric-card"><div class="metric-label">Net Outstanding</div><div class="metric-value text-gold" id="mOutstanding">—</div><div class="metric-sub">With karigars/depts</div></div>
+
+<!-- KPI Cards -->
+<div class="metric-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px">
+  <div class="metric-card">
+    <div class="metric-label">Total Issued</div>
+    <div class="metric-value text-orange" id="mIssued">—</div>
+    <div class="metric-sub">All time gross weight</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">Total Returned</div>
+    <div class="metric-value text-green" id="mReturned">—</div>
+    <div class="metric-sub">All time gross weight</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">Net Outstanding</div>
+    <div class="metric-value text-gold" id="mOutstanding">—</div>
+    <div class="metric-sub">With artisans / depts</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">Current Stock</div>
+    <div class="metric-value" style="color:var(--blue)" id="mStock">—</div>
+    <div class="metric-sub">In metal store</div>
+  </div>
 </div>
 
-<div style="display:grid;grid-template-columns:1fr 260px;gap:14px">
+<!-- Toolbar -->
+<div class="toolbar" style="margin-bottom:16px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px">
+  <div class="toolbar-left">
+    <div class="tab-group">
+      <button class="tab active" onclick="switchTab('ledger',this)">Ledger</button>
+      <button class="tab" onclick="switchTab('dept',this)">Dept Balance</button>
+      <button class="tab" onclick="switchTab('karigar',this)">Karigar Balance</button>
+      <button class="tab" onclick="switchTab('stock',this)">Stock Details</button>
+    </div>
+  </div>
+  <div class="toolbar-right">
+    {% if user.role.name in ['Admin', 'Metal Store Manager', 'Production Manager'] %}
+    <button class="btn btn-secondary btn-sm" onclick="openModal('returnModal')">↩ Return Metal</button>
+    <button class="btn btn-primary btn-sm" onclick="openModal('issueModal')">+ Issue Metal</button>
+    {% endif %}
+  </div>
+</div>
+
+<!-- ── TAB: LEDGER ── -->
+<div id="tab-ledger">
   <div class="card">
     <div class="card-header">
       <span class="card-title">Transaction Ledger</span>
-      <div style="display:flex;gap:8px">
-        <button class="btn btn-secondary btn-sm" onclick="openModal('issueModal')">Issue Metal</button>
-        <button class="btn btn-primary btn-sm" onclick="openModal('returnModal')">Return Metal</button>
+      <div style="display:flex;gap:8px;align-items:center">
+        <select id="filterMetal" class="form-control" style="width:130px;padding:5px 8px;font-size:11px" onchange="loadLedger(1)">
+          <option value="">All Metals</option>
+          <option value="24K">24K Gold</option>
+          <option value="22K">22K Gold</option>
+          <option value="18K">18K Gold</option>
+          <option value="Silver">Silver</option>
+        </select>
+        <select id="filterType" class="form-control" style="width:140px;padding:5px 8px;font-size:11px" onchange="loadLedger(1)">
+          <option value="">All Types</option>
+          <option value="Issue">Issue</option>
+          <option value="Return">Return</option>
+          <option value="Adjustment">Adjustment</option>
+          <option value="Refinery Out">Refinery Out</option>
+          <option value="Refinery In">Refinery In</option>
+        </select>
+        <button class="btn btn-secondary btn-sm" onclick="loadLedger(1)">↻</button>
       </div>
     </div>
     <div class="table-wrapper">
       <table class="data-table">
-        <thead><tr><th>Type</th><th>Metal</th><th>Weight</th><th>Purity</th><th>Fine Wt</th><th>To/From</th><th>Value</th><th>Date</th></tr></thead>
-        <tbody id="ledgerBody"><tr><td colspan="8" class="empty-state">Loading...</td></tr></tbody>
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Metal</th>
+            <th>Gross Wt</th>
+            <th>Purity</th>
+            <th>Fine Wt</th>
+            <th>Rate (₹/g)</th>
+            <th>Value</th>
+            <th>To / From</th>
+            <th>Balance After</th>
+            <th>Date</th>
+          </tr>
+        </thead>
+        <tbody id="ledgerBody">
+          <tr><td colspan="10" class="empty-state">Loading...</td></tr>
+        </tbody>
       </table>
     </div>
-  </div>
-  <div class="card">
-    <div class="card-header"><span class="card-title">Current Stock</span></div>
-    <div class="card-body" id="stockBody"><div class="empty-state">Loading...</div></div>
+    <div class="pagination" id="ledgerPagination" style="justify-content:flex-end"></div>
   </div>
 </div>
 
-<!-- Issue Modal -->
+<!-- ── TAB: DEPARTMENT BALANCE ── -->
+<div id="tab-dept" class="hidden">
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Department-wise Metal Balance</span>
+      <button class="btn btn-secondary btn-sm" onclick="loadDeptBalance()">↻ Refresh</button>
+    </div>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Department</th>
+          <th>Total Issued</th>
+          <th>Total Returned</th>
+          <th>Outstanding</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="deptBody">
+        <tr><td colspan="5" class="empty-state">Loading...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── TAB: KARIGAR BALANCE ── -->
+<div id="tab-karigar" class="hidden">
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Karigar-wise Metal Balance</span>
+      <button class="btn btn-secondary btn-sm" onclick="loadKarigarBalance()">↻ Refresh</button>
+    </div>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Karigar</th>
+          <th>Code</th>
+          <th>Total Issued</th>
+          <th>Total Returned</th>
+          <th>Outstanding</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="karigarBalBody">
+        <tr><td colspan="6" class="empty-state">Loading...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── TAB: STOCK DETAILS ── -->
+<div id="tab-stock" class="hidden">
+  <div style="display:grid;grid-template-columns:1fr 280px;gap:14px">
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Current Metal Stock</span>
+        <button class="btn btn-secondary btn-sm" onclick="loadStockDetails()">↻ Refresh</button>
+      </div>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Metal Type</th>
+            <th>Stock Type</th>
+            <th>Quantity (g)</th>
+            <th>Purity %</th>
+            <th>Last Rate (₹/g)</th>
+            <th>Last Updated</th>
+          </tr>
+        </thead>
+        <tbody id="stockDetailBody">
+          <tr><td colspan="6" class="empty-state">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Stock summary panel -->
+    <div class="card">
+      <div class="card-header"><span class="card-title">Stock Summary</span></div>
+      <div class="card-body" id="stockSummaryPanel">
+        <div class="empty-state text-xs">Loading...</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ════════════════ MODALS ════════════════ -->
+
+<!-- ISSUE METAL -->
 <div class="modal-overlay hidden" id="issueModal">
-  <div class="modal">
-    <div class="modal-header"><span class="modal-title">Issue Metal</span><button class="modal-close" onclick="closeModal('issueModal')">×</button></div>
+  <div class="modal" style="max-width:520px">
+    <div class="modal-header">
+      <span class="modal-title">Issue Metal</span>
+      <button class="modal-close" onclick="closeModal('issueModal')">×</button>
+    </div>
     <div class="modal-body">
       <div class="form-row">
-        <div class="form-group"><label class="form-label">Metal Type</label><select id="im_metal" class="form-control"><option value="22K">22K Gold</option><option value="24K">24K Gold</option><option value="18K">18K Gold</option><option value="Silver">Silver</option></select></div>
-        <div class="form-group"><label class="form-label">Weight (g)</label><input id="im_weight" type="number" step="0.001" class="form-control"></div>
+        <div class="form-group">
+          <label class="form-label">Metal Type *</label>
+          <select id="im_metal" class="form-control" onchange="imSetPurity()">
+            <option value="22K">22K Gold</option>
+            <option value="24K">24K Gold</option>
+            <option value="18K">18K Gold</option>
+            <option value="Silver">Silver</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Gross Weight (g) *</label>
+          <input id="im_weight" type="number" step="0.001" min="0.001" class="form-control" placeholder="0.000" oninput="imCalcFine()">
+        </div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label class="form-label">Purity (%)</label><input id="im_purity" type="number" step="0.01" class="form-control" value="91.6"></div>
-        <div class="form-group"><label class="form-label">Rate (₹/g)</label><input id="im_rate" type="number" step="0.01" class="form-control"></div>
+        <div class="form-group">
+          <label class="form-label">Purity (%) *</label>
+          <input id="im_purity" type="number" step="0.01" min="1" max="100" class="form-control" value="91.6" oninput="imCalcFine()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Issue Rate (₹/g) *</label>
+          <input id="im_rate" type="number" step="0.01" min="0" class="form-control" placeholder="e.g. 6500" oninput="imCalcFine()">
+        </div>
+      </div>
+      <!-- Fine weight preview -->
+      <div style="background:#13110e;border:1px solid #2a2318;border-radius:6px;padding:10px 14px;margin-bottom:14px;font-size:12px">
+        <span class="text-muted">Fine Weight: </span>
+        <span id="im_fine_preview" class="text-gold" style="font-weight:600">— g</span>
+        &nbsp;&nbsp;|&nbsp;&nbsp;
+        <span class="text-muted">Est. Value: </span>
+        <span id="im_value_preview" class="text-green" style="font-weight:600">—</span>
       </div>
       <div class="form-row">
-        <div class="form-group"><label class="form-label">Issue To Type</label><select id="im_to_type" class="form-control"><option value="Department">Department</option><option value="Karigar">Karigar</option></select></div>
-        <div class="form-group"><label class="form-label">Name</label><input id="im_to_name" class="form-control" placeholder="e.g. Casting Dept"></div>
+        <div class="form-group">
+          <label class="form-label">Issue To *</label>
+          <select id="im_to_type" class="form-control" onchange="loadIssueTo()">
+            <option value="Department">Department</option>
+            <option value="Karigar">Karigar</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" id="im_to_label">Department *</label>
+          <select id="im_to_id" class="form-control">
+            <option value="">Loading...</option>
+          </select>
+        </div>
       </div>
-      <div class="form-group"><label class="form-label">Notes</label><textarea id="im_notes" class="form-control" rows="2"></textarea></div>
+      <div class="form-group">
+        <label class="form-label">Job (optional)</label>
+        <select id="im_job_id" class="form-control">
+          <option value="">— No specific job —</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <textarea id="im_notes" class="form-control" rows="2" placeholder="Optional remarks..."></textarea>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('issueModal')">Cancel</button>
-      <button class="btn btn-primary" onclick="submitIssue()">Issue Metal</button>
+      <button class="btn btn-primary" id="im_btn" onclick="submitIssue()">Issue Metal</button>
     </div>
   </div>
 </div>
 
-<!-- Return Modal -->
+<!-- RETURN METAL -->
 <div class="modal-overlay hidden" id="returnModal">
-  <div class="modal">
-    <div class="modal-header"><span class="modal-title">Return Metal</span><button class="modal-close" onclick="closeModal('returnModal')">×</button></div>
+  <div class="modal" style="max-width:520px">
+    <div class="modal-header">
+      <span class="modal-title">Return Metal</span>
+      <button class="modal-close" onclick="closeModal('returnModal')">×</button>
+    </div>
     <div class="modal-body">
       <div class="form-row">
-        <div class="form-group"><label class="form-label">Metal Type</label><select id="rm_metal" class="form-control"><option value="22K">22K Gold</option><option value="24K">24K Gold</option><option value="18K">18K</option><option value="Silver">Silver</option></select></div>
-        <div class="form-group"><label class="form-label">Weight (g)</label><input id="rm_weight" type="number" step="0.001" class="form-control"></div>
+        <div class="form-group">
+          <label class="form-label">Metal Type *</label>
+          <select id="rm_metal" class="form-control" onchange="rmSetPurity()">
+            <option value="22K">22K Gold</option>
+            <option value="24K">24K Gold</option>
+            <option value="18K">18K Gold</option>
+            <option value="Silver">Silver</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Gross Weight (g) *</label>
+          <input id="rm_weight" type="number" step="0.001" min="0.001" class="form-control" placeholder="0.000" oninput="rmCalcFine()">
+        </div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label class="form-label">Purity (%)</label><input id="rm_purity" type="number" step="0.01" class="form-control" value="91.6"></div>
-        <div class="form-group"><label class="form-label">From Name</label><input id="rm_from_name" class="form-control"></div>
+        <div class="form-group">
+          <label class="form-label">Purity (%) *</label>
+          <input id="rm_purity" type="number" step="0.01" min="1" max="100" class="form-control" value="91.6" oninput="rmCalcFine()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Return From *</label>
+          <select id="rm_from_type" class="form-control" onchange="loadReturnFrom()">
+            <option value="Karigar">Karigar</option>
+            <option value="Department">Department</option>
+          </select>
+        </div>
       </div>
-      <div class="form-group"><label class="form-label">Notes</label><textarea id="rm_notes" class="form-control" rows="2"></textarea></div>
+      <!-- Fine weight preview -->
+      <div style="background:#13110e;border:1px solid #2a2318;border-radius:6px;padding:10px 14px;margin-bottom:14px;font-size:12px">
+        <span class="text-muted">Fine Weight: </span>
+        <span id="rm_fine_preview" class="text-gold" style="font-weight:600">— g</span>
+      </div>
+      <div class="form-group">
+        <label class="form-label" id="rm_from_label">Karigar *</label>
+        <select id="rm_from_id" class="form-control">
+          <option value="">Loading...</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Job (optional)</label>
+        <select id="rm_job_id" class="form-control">
+          <option value="">— No specific job —</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <textarea id="rm_notes" class="form-control" rows="2" placeholder="Optional remarks..."></textarea>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('returnModal')">Cancel</button>
-      <button class="btn btn-primary" onclick="submitReturn()">Record Return</button>
+      <button class="btn btn-primary" id="rm_btn" onclick="submitReturn()">Record Return</button>
     </div>
   </div>
 </div>
+
 {% endblock %}
+
 {% block extra_js %}
 <script>
-async function loadMetal() {
-  const [recon, ledger] = await Promise.all([API.get('/api/v1/metal/reconciliation'), API.get('/api/v1/metal/ledger')]);
-  document.getElementById('mIssued').textContent = recon.total_issued.toFixed(3) + 'g';
-  document.getElementById('mReturned').textContent = recon.total_returned.toFixed(3) + 'g';
-  document.getElementById('mOutstanding').textContent = recon.net_outstanding.toFixed(3) + 'g';
-  document.getElementById('stockBody').innerHTML = recon.current_stock.map(s=>`<div class="detail-row"><span class="detail-label">${s.metal}</span><span class="detail-value text-gold">${parseFloat(s.qty).toFixed(3)}g</span></div>`).join('');
-  const typeMap = {Issue:'badge-orange',Return:'badge-green',Adjustment:'badge-blue','Refinery Out':'badge-purple','Refinery In':'badge-gold'};
-  document.getElementById('ledgerBody').innerHTML = ledger.items.map(t=>`
-    <tr><td><span class="badge ${typeMap[t.type]||'badge-gray'}">${t.type}</span></td>
-    <td>${metalBadge(t.metal)}</td><td>${parseFloat(t.weight).toFixed(3)}g</td>
-    <td class="text-muted">${t.purity||'—'}%</td><td>${t.fine_weight?parseFloat(t.fine_weight).toFixed(3)+'g':'—'}</td>
-    <td>${t.to_name||'—'}</td><td>${t.value?fmtCur(t.value):'—'}</td>
-    <td class="text-muted text-sm">${fmtDateTime(t.created_at)}</td></tr>`).join('');
+// ── State ──────────────────────────────────────────────────────────────────────
+let allDepts    = [];
+let allKarigars = [];
+
+// ── Purity defaults ────────────────────────────────────────────────────────────
+const PURITY = { '24K': 99.9, '22K': 91.6, '18K': 75.0, 'Silver': 92.5 };
+
+function imSetPurity() {
+  document.getElementById('im_purity').value = PURITY[document.getElementById('im_metal').value] || 91.6;
+  imCalcFine();
 }
+function rmSetPurity() {
+  document.getElementById('rm_purity').value = PURITY[document.getElementById('rm_metal').value] || 91.6;
+  rmCalcFine();
+}
+function imCalcFine() {
+  const w = parseFloat(document.getElementById('im_weight').value) || 0;
+  const p = parseFloat(document.getElementById('im_purity').value) || 0;
+  const r = parseFloat(document.getElementById('im_rate').value)   || 0;
+  document.getElementById('im_fine_preview').textContent  = (w * p / 100).toFixed(4) + ' g';
+  document.getElementById('im_value_preview').textContent = r ? fmtCur(w * r) : '—';
+}
+function rmCalcFine() {
+  const w = parseFloat(document.getElementById('rm_weight').value) || 0;
+  const p = parseFloat(document.getElementById('rm_purity').value) || 0;
+  document.getElementById('rm_fine_preview').textContent = (w * p / 100).toFixed(4) + ' g';
+}
+
+// ── Tab switch ─────────────────────────────────────────────────────────────────
+function switchTab(tab, btn) {
+  document.querySelectorAll('.tab-group .tab').forEach(t => t.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  ['ledger','dept','karigar','stock'].forEach(t =>
+    document.getElementById('tab-' + t).classList.toggle('hidden', t !== tab)
+  );
+  if      (tab === 'dept')    loadDeptBalance();
+  else if (tab === 'karigar') loadKarigarBalance();
+  else if (tab === 'stock')   loadStockDetails();
+}
+
+// ── Master data (depts, karigars, jobs) ────────────────────────────────────────
+async function loadMasterData() {
+  try {
+    const [deptRes, kRes, jobRes] = await Promise.all([
+      API.get('/api/v1/departments/'),
+      API.get('/api/v1/karigar/'),
+      API.get('/api/v1/jobs/?per_page=100')
+    ]);
+    allDepts    = Array.isArray(deptRes) ? deptRes : (deptRes.items || []);
+    allKarigars = Array.isArray(kRes)    ? kRes    : (kRes.items    || []);
+    const jobs  = jobRes.items || [];
+
+    const jobOpts = '<option value="">— No specific job —</option>' +
+      jobs.map(j => `<option value="${j.id}">${j.job_code} — ${j.customer_name || ''}</option>`).join('');
+    document.getElementById('im_job_id').innerHTML = jobOpts;
+    document.getElementById('rm_job_id').innerHTML = jobOpts;
+
+    loadIssueTo();
+    loadReturnFrom();
+  } catch(e) {
+    console.error('Master data error:', e);
+  }
+}
+
+function loadIssueTo() {
+  const type = document.getElementById('im_to_type').value;
+  document.getElementById('im_to_label').textContent = type + ' *';
+  const sel = document.getElementById('im_to_id');
+  sel.innerHTML = type === 'Department'
+    ? (allDepts.length
+        ? allDepts.map(d => `<option value="${d.id}|${d.name}">${d.name}</option>`).join('')
+        : '<option value="">No departments</option>')
+    : (allKarigars.length
+        ? allKarigars.map(k => `<option value="${k.id}|${k.name}">${k.name} (${k.karigar_code})</option>`).join('')
+        : '<option value="">No karigars</option>');
+}
+
+function loadReturnFrom() {
+  const type = document.getElementById('rm_from_type').value;
+  document.getElementById('rm_from_label').textContent = type + ' *';
+  const sel = document.getElementById('rm_from_id');
+  sel.innerHTML = type === 'Karigar'
+    ? (allKarigars.length
+        ? allKarigars.map(k => `<option value="${k.id}|${k.name}">${k.name} (${k.karigar_code})</option>`).join('')
+        : '<option value="">No karigars</option>')
+    : (allDepts.length
+        ? allDepts.map(d => `<option value="${d.id}|${d.name}">${d.name}</option>`).join('')
+        : '<option value="">No departments</option>');
+}
+
+// ── KPI summary ────────────────────────────────────────────────────────────────
+async function loadSummary() {
+  try {
+    const r = await API.get('/api/v1/metal/reconciliation');
+    document.getElementById('mIssued').textContent      = parseFloat(r.total_issued).toFixed(3)      + 'g';
+    document.getElementById('mReturned').textContent    = parseFloat(r.total_returned).toFixed(3)    + 'g';
+    document.getElementById('mOutstanding').textContent = parseFloat(r.net_outstanding).toFixed(3)   + 'g';
+    const totalStock = (r.current_stock || []).reduce((s, x) => s + parseFloat(x.qty || 0), 0);
+    document.getElementById('mStock').textContent = totalStock.toFixed(3) + 'g';
+  } catch(e) {
+    console.error('Summary error:', e);
+  }
+}
+
+// ── Ledger table ───────────────────────────────────────────────────────────────
+async function loadLedger(page = 1) {
+  const metal = document.getElementById('filterMetal').value;
+  const type  = document.getElementById('filterType').value;
+  let url = `/api/v1/metal/ledger?page=${page}&per_page=25`;
+  if (metal) url += `&metal_type=${encodeURIComponent(metal)}`;
+  if (type)  url += `&transaction_type=${encodeURIComponent(type)}`;
+
+  try {
+    const data = await API.get(url);
+    const typeClass = {
+      'Issue': 'badge-orange', 'Return': 'badge-green',
+      'Adjustment': 'badge-blue', 'Refinery Out': 'badge-purple', 'Refinery In': 'badge-gold'
+    };
+
+    document.getElementById('ledgerBody').innerHTML = data.items?.length
+      ? data.items.map(t => `
+        <tr>
+          <td><span class="badge ${typeClass[t.type] || 'badge-gray'}">${t.type}</span></td>
+          <td>${metalBadge(t.metal)}</td>
+          <td style="font-family:monospace">${parseFloat(t.weight).toFixed(3)}g</td>
+          <td class="text-muted">${t.purity != null ? parseFloat(t.purity).toFixed(2) + '%' : '—'}</td>
+          <td style="font-family:monospace">${t.fine_weight != null ? parseFloat(t.fine_weight).toFixed(4) + 'g' : '—'}</td>
+          <td class="text-muted">${t.rate ? '₹' + parseFloat(t.rate).toLocaleString('en-IN') : '—'}</td>
+          <td>${t.value ? fmtCur(t.value) : '—'}</td>
+          <td>
+            <span class="bold">${t.to_name || '—'}</span>
+            ${t.to_type ? `<div class="text-xs text-muted">${t.to_type}</div>` : ''}
+          </td>
+          <td style="font-family:monospace;color:#a0a0a0">${t.balance_after != null ? parseFloat(t.balance_after).toFixed(3) + 'g' : '—'}</td>
+          <td class="text-muted text-sm">${fmtDateTime(t.created_at)}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="10" class="empty-state">No transactions found</td></tr>';
+
+    // Pagination
+    const pages = data.pages || 1;
+    const pag   = document.getElementById('ledgerPagination');
+    pag.innerHTML = pages > 1
+      ? `<span class="page-info">Page ${page} of ${pages} · ${data.total} transactions</span>
+         ${page > 1     ? `<button class="btn btn-secondary btn-sm" onclick="loadLedger(${page-1})">← Prev</button>` : ''}
+         ${page < pages ? `<button class="btn btn-secondary btn-sm" onclick="loadLedger(${page+1})">Next →</button>` : ''}`
+      : `<span class="page-info">${data.total || 0} transactions</span>`;
+  } catch(e) {
+    document.getElementById('ledgerBody').innerHTML =
+      `<tr><td colspan="10" class="empty-state">Error: ${e.message}</td></tr>`;
+  }
+}
+
+// ── Dept balance ───────────────────────────────────────────────────────────────
+async function loadDeptBalance() {
+  try {
+    const data = await API.get('/api/v1/metal/balance/department');
+    document.getElementById('deptBody').innerHTML = data.length
+      ? data.map(d => `
+        <tr>
+          <td class="bold">${d.department_name}</td>
+          <td style="font-family:monospace;color:var(--orange)">${parseFloat(d.total_issued).toFixed(3)}g</td>
+          <td style="font-family:monospace;color:var(--green)">${parseFloat(d.total_returned).toFixed(3)}g</td>
+          <td style="font-family:monospace;font-weight:600;color:${d.outstanding > 0.001 ? 'var(--gold)' : 'var(--green)'}">
+            ${parseFloat(d.outstanding).toFixed(3)}g
+          </td>
+          <td><span class="badge ${d.outstanding > 0.001 ? 'badge-orange' : 'badge-green'}">
+            ${d.outstanding > 0.001 ? 'Outstanding' : 'Clear'}
+          </span></td>
+        </tr>`).join('')
+      : '<tr><td colspan="5" class="empty-state">No data</td></tr>';
+  } catch(e) {
+    document.getElementById('deptBody').innerHTML =
+      `<tr><td colspan="5" class="empty-state">Error: ${e.message}</td></tr>`;
+  }
+}
+
+// ── Karigar balance ────────────────────────────────────────────────────────────
+async function loadKarigarBalance() {
+  try {
+    const data = await API.get('/api/v1/metal/balance/karigar');
+    document.getElementById('karigarBalBody').innerHTML = data.length
+      ? data.map(k => `
+        <tr>
+          <td class="bold">${k.karigar_name}</td>
+          <td class="text-muted" style="font-family:monospace">${k.karigar_code || '—'}</td>
+          <td style="font-family:monospace;color:var(--orange)">${parseFloat(k.total_issued).toFixed(3)}g</td>
+          <td style="font-family:monospace;color:var(--green)">${parseFloat(k.total_returned).toFixed(3)}g</td>
+          <td style="font-family:monospace;font-weight:600;color:${k.outstanding > 0.001 ? 'var(--gold)' : 'var(--green)'}">
+            ${parseFloat(k.outstanding).toFixed(3)}g
+          </td>
+          <td><span class="badge ${k.outstanding > 0.001 ? 'badge-orange' : 'badge-green'}">
+            ${k.outstanding > 0.001 ? 'Outstanding' : 'Clear'}
+          </span></td>
+        </tr>`).join('')
+      : '<tr><td colspan="6" class="empty-state">No data</td></tr>';
+  } catch(e) {
+    document.getElementById('karigarBalBody').innerHTML =
+      `<tr><td colspan="6" class="empty-state">Error: ${e.message}</td></tr>`;
+  }
+}
+
+// ── Stock details ──────────────────────────────────────────────────────────────
+async function loadStockDetails() {
+  try {
+    const data = await API.get('/api/v1/metal/stock');
+
+    document.getElementById('stockDetailBody').innerHTML = data.length
+      ? data.map(s => `
+        <tr>
+          <td>${metalBadge(s.metal_type)}</td>
+          <td><span class="badge badge-gray">${s.stock_type || '—'}</span></td>
+          <td style="font-family:monospace;font-weight:600;color:var(--gold)">${parseFloat(s.quantity).toFixed(4)}g</td>
+          <td class="text-muted">${s.purity_pct != null ? parseFloat(s.purity_pct).toFixed(2) + '%' : s.purity != null ? parseFloat(s.purity).toFixed(2) + '%' : '—'}</td>
+          <td>${s.last_rate ? '₹' + parseFloat(s.last_rate).toLocaleString('en-IN', {minimumFractionDigits:2}) : '—'}</td>
+          <td class="text-muted text-sm">${s.updated_at ? fmtDateTime(s.updated_at) : '—'}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="6" class="empty-state">No stock data</td></tr>';
+
+    // Stock summary panel
+    const totalGold   = data.filter(s => s.metal_type.includes('K')).reduce((a, s) => a + parseFloat(s.quantity), 0);
+    const totalSilver = data.filter(s => s.metal_type === 'Silver').reduce((a, s) => a + parseFloat(s.quantity), 0);
+    const metalGroups = data.reduce((acc, s) => {
+      acc[s.metal_type] = (acc[s.metal_type] || 0) + parseFloat(s.quantity);
+      return acc;
+    }, {});
+
+    document.getElementById('stockSummaryPanel').innerHTML = `
+      <div class="detail-row">
+        <span class="detail-label">Total Gold Stock</span>
+        <span class="detail-value text-gold">${totalGold.toFixed(3)}g</span>
+      </div>
+      <div class="detail-row">
+        <span class="detail-label">Total Silver Stock</span>
+        <span class="detail-value" style="color:var(--blue)">${totalSilver.toFixed(3)}g</span>
+      </div>
+      <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+        <div class="text-xs text-muted" style="text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px">By Metal Type</div>
+        ${Object.entries(metalGroups).map(([m, q]) => `
+          <div class="detail-row">
+            <span class="detail-label">${m}</span>
+            <span class="detail-value" style="font-family:monospace">${parseFloat(q).toFixed(3)}g</span>
+          </div>`).join('')}
+      </div>`;
+  } catch(e) {
+    document.getElementById('stockDetailBody').innerHTML =
+      `<tr><td colspan="6" class="empty-state">Error: ${e.message}</td></tr>`;
+  }
+}
+
+// ── Submit Issue ───────────────────────────────────────────────────────────────
 async function submitIssue() {
-  const b = {metal_type:document.getElementById('im_metal').value,weight:parseFloat(document.getElementById('im_weight').value),purity:parseFloat(document.getElementById('im_purity').value),rate:parseFloat(document.getElementById('im_rate').value),issued_to_type:document.getElementById('im_to_type').value,issued_to_id:1,issued_to_name:document.getElementById('im_to_name').value,notes:document.getElementById('im_notes').value||null};
-  try{await API.post('/api/v1/metal/issue',b);showToast('Metal issued');closeModal('issueModal');loadMetal();}catch(e){showToast(e.message,'error');}
+  const weight = parseFloat(document.getElementById('im_weight').value);
+  const purity = parseFloat(document.getElementById('im_purity').value);
+  const rate   = parseFloat(document.getElementById('im_rate').value);
+  const toRaw  = document.getElementById('im_to_id').value;
+
+  if (!weight || weight <= 0)              return showToast('Weight is required', 'error');
+  if (!purity || purity <= 0 || purity > 100) return showToast('Invalid purity', 'error');
+  if (!rate   || rate <= 0)                return showToast('Issue rate is required', 'error');
+  if (!toRaw)                              return showToast('Select a recipient', 'error');
+
+  const [toId, toName] = toRaw.split('|');
+  const btn = document.getElementById('im_btn');
+  btn.disabled = true; btn.textContent = 'Issuing...';
+
+  try {
+    const res = await API.post('/api/v1/metal/issue', {
+      metal_type:      document.getElementById('im_metal').value,
+      weight,
+      purity_pct:      purity,
+      issue_rate:      rate,
+      issued_to_type:  document.getElementById('im_to_type').value,
+      issued_to_id:    parseInt(toId),
+      issued_to_name:  toName,
+      job_id:          document.getElementById('im_job_id').value ? parseInt(document.getElementById('im_job_id').value) : null,
+      notes:           document.getElementById('im_notes').value || null,
+    });
+    showToast(`Metal issued! Fine: ${res.fine_weight}g | Value: ${fmtCur(res.total_value)}`);
+    closeModal('issueModal');
+    // Reset form
+    ['im_weight','im_rate','im_notes'].forEach(id => { document.getElementById(id).value = ''; });
+    document.getElementById('im_fine_preview').textContent  = '— g';
+    document.getElementById('im_value_preview').textContent = '—';
+    loadSummary();
+    loadLedger(1);
+  } catch(e) {
+    showToast(e.message || 'Issue failed', 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Issue Metal';
+  }
 }
+
+// ── Submit Return ──────────────────────────────────────────────────────────────
 async function submitReturn() {
-  const b = {metal_type:document.getElementById('rm_metal').value,weight:parseFloat(document.getElementById('rm_weight').value),purity:parseFloat(document.getElementById('rm_purity').value),from_type:'Karigar',from_id:1,from_name:document.getElementById('rm_from_name').value,notes:document.getElementById('rm_notes').value||null};
-  try{await API.post('/api/v1/metal/return',b);showToast('Metal return recorded');closeModal('returnModal');loadMetal();}catch(e){showToast(e.message,'error');}
+  const weight   = parseFloat(document.getElementById('rm_weight').value);
+  const purity   = parseFloat(document.getElementById('rm_purity').value);
+  const fromRaw  = document.getElementById('rm_from_id').value;
+
+  if (!weight || weight <= 0)              return showToast('Weight is required', 'error');
+  if (!purity || purity <= 0 || purity > 100) return showToast('Invalid purity', 'error');
+  if (!fromRaw)                            return showToast('Select a source', 'error');
+
+  const [fromId, fromName] = fromRaw.split('|');
+  const btn = document.getElementById('rm_btn');
+  btn.disabled = true; btn.textContent = 'Recording...';
+
+  try {
+    const res = await API.post('/api/v1/metal/return', {
+      metal_type:  document.getElementById('rm_metal').value,
+      weight,
+      purity_pct:  purity,
+      from_type:   document.getElementById('rm_from_type').value,
+      from_id:     parseInt(fromId),
+      from_name:   fromName,
+      job_id:      document.getElementById('rm_job_id').value ? parseInt(document.getElementById('rm_job_id').value) : null,
+      notes:       document.getElementById('rm_notes').value || null,
+    });
+    showToast(`Return recorded! New balance: ${parseFloat(res.new_balance || 0).toFixed(3)}g`);
+    closeModal('returnModal');
+    ['rm_weight','rm_notes'].forEach(id => { document.getElementById(id).value = ''; });
+    document.getElementById('rm_fine_preview').textContent = '— g';
+    loadSummary();
+    loadLedger(1);
+  } catch(e) {
+    showToast(e.message || 'Return failed', 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Record Return';
+  }
 }
-loadMetal();
+
+// ── Init ───────────────────────────────────────────────────────────────────────
+Promise.all([loadSummary(), loadLedger(1), loadMasterData()]);
 </script>
 {% endblock %}

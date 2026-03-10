@@ -1,0 +1,387 @@
+{% extends "base.html" %}
+{% block title %}Designs{% endblock %}
+{% block page_title %}Design Library{% endblock %}
+{% block page_subtitle %}JEWELLERY DESIGNS · REFERENCE IMAGES{% endblock %}
+
+{% block content %}
+
+<!-- TOOLBAR -->
+<div class="toolbar" style="margin-bottom:16px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px">
+  <div class="toolbar-left">
+    <input id="searchInput" class="search-input" style="width:230px" placeholder="Search designs...">
+    <span class="text-xs text-muted" id="designCount" style="padding-left:4px"></span>
+  </div>
+  <div class="toolbar-right">
+    <button class="btn btn-primary btn-sm" onclick="openModal('newDesignModal')">+ New Design</button>
+  </div>
+</div>
+
+<!-- MAIN LAYOUT -->
+<div style="display:grid;grid-template-columns:1fr 290px;gap:14px">
+
+  <!-- DESIGN GRID -->
+  <div>
+    <div id="designGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:12px">
+      <div class="empty-state" style="grid-column:1/-1">Loading...</div>
+    </div>
+  </div>
+
+  <!-- DETAIL PANEL -->
+  <div>
+    <div class="card" id="detailPanel" style="position:sticky;top:20px">
+      <div class="card-header"><span class="card-title">Design Detail</span></div>
+      <div class="card-body" id="designDetail">
+        <div class="text-muted text-xs" style="padding:4px">Select a design to view details</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+
+<!-- ════════════════ MODALS ════════════════ -->
+
+<!-- NEW DESIGN -->
+<div class="modal-overlay hidden" id="newDesignModal">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-header">
+      <span class="modal-title">New Design</span>
+      <button class="modal-close" onclick="closeModal('newDesignModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Design Name *</label>
+        <input id="nd_name" class="form-control" placeholder="e.g. Peacock Necklace Set">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Description</label>
+        <textarea id="nd_desc" class="form-control" rows="3"
+          placeholder="Design details, material, occasion..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('newDesignModal')">Cancel</button>
+      <button class="btn btn-primary" id="ndBtn" onclick="submitNewDesign()">Create Design</button>
+    </div>
+  </div>
+</div>
+
+<!-- UPLOAD IMAGE -->
+<div class="modal-overlay hidden" id="uploadModal">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-header">
+      <span class="modal-title">Upload Design Image</span>
+      <button class="modal-close" onclick="closeModal('uploadModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="uploadDesignName" class="text-gold bold" style="margin-bottom:14px"></div>
+      <div class="form-group">
+        <label class="form-label">Image File (JPG / PNG / WEBP, max 5MB)</label>
+        <input id="imgFile" type="file" accept="image/jpeg,image/png,image/webp" class="form-control">
+      </div>
+      <div id="imgPreview" style="margin-top:10px;display:none">
+        <img id="previewImg" style="max-width:100%;max-height:220px;border-radius:6px;border:1px solid var(--border)">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('uploadModal')">Cancel</button>
+      <button class="btn btn-primary" id="uploadBtn" onclick="submitUpload()">Upload Image</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT DESIGN -->
+<div class="modal-overlay hidden" id="editDesignModal">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-header">
+      <span class="modal-title">Edit Design</span>
+      <button class="modal-close" onclick="closeModal('editDesignModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <input id="ed_id" type="hidden">
+      <div class="form-group">
+        <label class="form-label">Name *</label>
+        <input id="ed_name" class="form-control">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Description</label>
+        <textarea id="ed_desc" class="form-control" rows="3"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('editDesignModal')">Cancel</button>
+      <button class="btn btn-primary" id="edBtn" onclick="submitEdit()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<style>
+.design-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.18s, box-shadow 0.18s;
+}
+.design-card:hover   { border-color: var(--gold); box-shadow: 0 0 10px rgba(201,168,76,0.15); }
+.design-card.selected { border-color: var(--gold); box-shadow: 0 0 16px rgba(201,168,76,0.3); }
+.design-thumb {
+  width: 100%; height: 130px;
+  background: #1a1710;
+  display: flex; align-items: center; justify-content: center;
+  color: #3a3020; font-size: 34px; overflow: hidden;
+}
+.design-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.design-info  { padding: 10px 12px; }
+.design-code  { font-size: 10px; color: var(--text-muted); letter-spacing: .08em; }
+.design-name  { font-size: 13px; font-weight: 600; color: var(--text-primary); margin-top: 2px;
+                white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.design-date  { font-size: 10px; color: var(--border-active); margin-top: 4px; }
+</style>
+
+<script>
+let allDesigns      = [];
+let selectedDesignId = null;
+let uploadDesignId  = null;
+
+// ── Load all designs ───────────────────────────────────────────────────────────
+async function loadDesigns() {
+  try {
+    allDesigns = await API.get('/api/v1/designs/');
+    renderGrid(allDesigns);
+  } catch(e) {
+    document.getElementById('designGrid').innerHTML =
+      '<div class="empty-state" style="grid-column:1/-1">Error loading designs</div>';
+    showToast('Failed to load designs', 'error');
+  }
+}
+
+function renderGrid(data) {
+  document.getElementById('designCount').textContent =
+    `${data.length} design${data.length !== 1 ? 's' : ''}`;
+
+  if (!data.length) {
+    document.getElementById('designGrid').innerHTML =
+      '<div class="empty-state" style="grid-column:1/-1">No designs found. Create your first design!</div>';
+    return;
+  }
+
+  document.getElementById('designGrid').innerHTML = data.map(d => `
+    <div class="design-card ${selectedDesignId === d.id ? 'selected' : ''}"
+         onclick="selectDesign(${d.id})" id="card_${d.id}">
+      <div class="design-thumb" id="thumb_${d.id}">
+        ${d.image_path ? '<span style="font-size:12px;color:var(--text-muted)">Loading...</span>' : '◈'}
+      </div>
+      <div class="design-info">
+        <div class="design-code">${d.design_code}</div>
+        <div class="design-name" title="${d.name}">${d.name}</div>
+        <div class="design-date">${fmtDate(d.created_at)}</div>
+      </div>
+    </div>`).join('');
+
+  // Load thumbnails async
+  data.filter(d => d.image_path).forEach(d => loadThumb(d.id));
+}
+
+async function loadThumb(designId) {
+  try {
+    const r  = await API.get(`/api/v1/designs/${designId}/image`);
+    const el = document.getElementById(`thumb_${designId}`);
+    if (el && r.image_base64) {
+      el.innerHTML = `<img src="${r.image_base64}" alt="design">`;
+    }
+  } catch(e) { /* silent */ }
+}
+
+// ── Select design ──────────────────────────────────────────────────────────────
+function selectDesign(id) {
+  if (selectedDesignId) {
+    document.getElementById(`card_${selectedDesignId}`)?.classList.remove('selected');
+  }
+  selectedDesignId = id;
+  document.getElementById(`card_${id}`)?.classList.add('selected');
+
+  const d = allDesigns.find(x => x.id === id);
+  if (!d) return;
+
+  document.getElementById('designDetail').innerHTML = `
+    <div id="detailImg"
+      style="width:100%;height:170px;background:#1a1710;border-radius:6px;
+             border:1px solid var(--border);display:flex;align-items:center;
+             justify-content:center;color:#3a3020;font-size:40px;
+             margin-bottom:14px;overflow:hidden">
+      ${d.image_path ? '<span class="text-xs text-muted">Loading...</span>' : '◈'}
+    </div>
+    <div class="detail-row">
+      <span class="detail-label">Code</span>
+      <span class="detail-value text-gold" style="font-family:monospace">${d.design_code}</span>
+    </div>
+    <div class="detail-row">
+      <span class="detail-label">Name</span>
+      <span class="detail-value bold">${d.name}</span>
+    </div>
+    <div class="detail-row">
+      <span class="detail-label">Description</span>
+      <span class="detail-value text-muted">${d.description || '—'}</span>
+    </div>
+    <div class="detail-row">
+      <span class="detail-label">Created</span>
+      <span class="detail-value text-muted">${fmtDate(d.created_at)}</span>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
+      <button class="btn btn-secondary btn-sm"
+        onclick="openUpload(${d.id},'${d.name.replace(/'/g,"\\'")}')">📷 Upload Image</button>
+      <button class="btn btn-secondary btn-sm"
+        onclick="openEdit(${d.id},'${d.name.replace(/'/g,"\\'")}','${(d.description||'').replace(/'/g,"\\'")}')">✎ Edit</button>
+      <button class="btn btn-danger btn-sm"
+        onclick="deleteDesign(${d.id},'${d.name.replace(/'/g,"\\'")}')">🗑 Delete</button>
+    </div>`;
+
+  // Load full image
+  if (d.image_path) {
+    API.get(`/api/v1/designs/${d.id}/image`).then(r => {
+      const el = document.getElementById('detailImg');
+      if (el && r.image_base64) {
+        el.innerHTML = `<img src="${r.image_base64}"
+          style="width:100%;height:100%;object-fit:cover;border-radius:6px">`;
+      }
+    }).catch(() => {});
+  }
+}
+
+// ── Create design ──────────────────────────────────────────────────────────────
+async function submitNewDesign() {
+  const name = document.getElementById('nd_name').value.trim();
+  const desc = document.getElementById('nd_desc').value.trim();
+  if (!name) return showToast('Design name required', 'error');
+
+  const btn = document.getElementById('ndBtn');
+  btn.disabled = true; btn.textContent = 'Creating...';
+  try {
+    await API.post(`/api/v1/designs/?name=${encodeURIComponent(name)}&description=${encodeURIComponent(desc)}`);
+    showToast('Design created!');
+    closeModal('newDesignModal');
+    document.getElementById('nd_name').value = '';
+    document.getElementById('nd_desc').value = '';
+    loadDesigns();
+  } catch(e) {
+    showToast(e.message || 'Create failed', 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Create Design';
+  }
+}
+
+// ── Upload image ───────────────────────────────────────────────────────────────
+function openUpload(id, name) {
+  uploadDesignId = id;
+  document.getElementById('uploadDesignName').textContent = name;
+  document.getElementById('imgFile').value = '';
+  document.getElementById('imgPreview').style.display = 'none';
+  openModal('uploadModal');
+}
+
+document.getElementById('imgFile').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) {
+    showToast('File too large — max 5MB', 'error');
+    e.target.value = '';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = ev => {
+    document.getElementById('previewImg').src = ev.target.result;
+    document.getElementById('imgPreview').style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+});
+
+async function submitUpload() {
+  const fileInput = document.getElementById('imgFile');
+  if (!fileInput.files[0]) return showToast('Select an image file', 'error');
+
+  const formData = new FormData();
+  formData.append('file', fileInput.files[0]);
+
+  const btn = document.getElementById('uploadBtn');
+  btn.disabled = true; btn.textContent = 'Uploading...';
+  try {
+    const res = await fetch(`/api/v1/designs/${uploadDesignId}/upload-image`, {
+      method: 'POST', body: formData, credentials: 'include'
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Upload failed');
+    showToast('Image uploaded!');
+    closeModal('uploadModal');
+    loadDesigns();
+    setTimeout(() => selectDesign(uploadDesignId), 600);
+  } catch(e) {
+    showToast(e.message || 'Upload failed', 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Upload Image';
+  }
+}
+
+// ── Edit design ────────────────────────────────────────────────────────────────
+function openEdit(id, name, desc) {
+  document.getElementById('ed_id').value   = id;
+  document.getElementById('ed_name').value = name;
+  document.getElementById('ed_desc').value = desc;
+  openModal('editDesignModal');
+}
+
+async function submitEdit() {
+  const id   = document.getElementById('ed_id').value;
+  const name = document.getElementById('ed_name').value.trim();
+  const desc = document.getElementById('ed_desc').value.trim();
+  if (!name) return showToast('Design name required', 'error');
+
+  const btn = document.getElementById('edBtn');
+  btn.disabled = true; btn.textContent = 'Saving...';
+  try {
+    await API.put(`/api/v1/designs/${id}`, { name, description: desc });
+    showToast('Design updated!');
+    closeModal('editDesignModal');
+    loadDesigns();
+    setTimeout(() => selectDesign(parseInt(id)), 300);
+  } catch(e) {
+    showToast(e.message || 'Update failed', 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Save Changes';
+  }
+}
+
+// ── Delete design ──────────────────────────────────────────────────────────────
+async function deleteDesign(id, name) {
+  if (!confirm(`"${name}" permanently delete hoga. Continue?`)) return;
+  try {
+    await API.delete(`/api/v1/designs/${id}`);
+    showToast('Design deleted');
+    selectedDesignId = null;
+    document.getElementById('designDetail').innerHTML =
+      '<div class="text-muted text-xs" style="padding:4px">Select a design to view details</div>';
+    loadDesigns();
+  } catch(e) {
+    showToast(e.message || 'Delete failed', 'error');
+  }
+}
+
+// ── Search ─────────────────────────────────────────────────────────────────────
+document.getElementById('searchInput').addEventListener('input', debounce(e => {
+  const q = e.target.value.toLowerCase();
+  renderGrid(q
+    ? allDesigns.filter(d =>
+        d.name.toLowerCase().includes(q) ||
+        d.design_code.toLowerCase().includes(q) ||
+        (d.description || '').toLowerCase().includes(q))
+    : allDesigns);
+}, 250));
+
+// ── Init ───────────────────────────────────────────────────────────────────────
+loadDesigns();
+</script>
+{% endblock %}

@@ -6,26 +6,75 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from contextlib import asynccontextmanager
 import os
+import pathlib
 
 from app.core.database import engine, get_db
 from app.core.config import settings
-from app.models.all_models import (
-    Base, User, Role
-)
+from app.core.security import has_page_access, get_user_permissions
+from app.models.all_models import Base, User, Role
 from app.api.v1.all_routers import (
     auth_router, jobs_router, scale_router, metal_router,
     karigar_router, scrap_router, refinery_router,
     inventory_router, costing_router, reports_router,
-    users_router, customers_router, departments_router
+    users_router, customers_router, departments_router,
+    finished_goods_router, designs_router
 )
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown events"""
-    # Create all database tables on startup
     Base.metadata.create_all(bind=engine)
     print(f"✅ Database tables created/verified")
+
+    # ── Seed roles & default admin ──────────────────────────────────────────
+    from app.core.database import SessionLocal
+    from app.core.security import hash_password
+    db = SessionLocal()
+    try:
+        ROLES = [
+            "Admin",
+            "Production Manager",
+            "Department Operator",
+            "Metal Store Manager",
+            "Accountant",
+            "QC Officer",
+        ]
+        role_map = {}
+        for rname in ROLES:
+            r = db.query(Role).filter(Role.name == rname).first()
+            if not r:
+                r = Role(name=rname)
+                db.add(r)
+                db.flush()
+                print(f"  ➕ Role created: {rname}")
+            role_map[rname] = r
+
+        db.commit()
+
+        # Create default admin if no users exist
+        if db.query(User).count() == 0:
+            admin_role = db.query(Role).filter(Role.name == "Admin").first()
+            admin = User(
+                name="Administrator",
+                username="admin",
+                email="admin@sonajewels.com",
+                password_hash=hash_password("admin123"),
+                role_id=admin_role.id,
+                is_active=True,
+            )
+            db.add(admin)
+            db.commit()
+            print("  👤 Default admin created — username: admin / password: admin123")
+        else:
+            print(f"  ✅ {db.query(Role).count()} roles ready, {db.query(User).count()} users found")
+    except Exception as e:
+        db.rollback()
+        print(f"  ⚠ Seed error: {e}")
+    finally:
+        db.close()
+    # ────────────────────────────────────────────────────────────────────────
+
     print(f"🚀 {settings.APP_NAME} v{settings.APP_VERSION} started")
     print(f"📖 API docs: http://localhost:8000/docs")
     yield
@@ -41,7 +90,20 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS - allow frontend to call backend
+from fastapi import status as http_status
+from fastapi.responses import JSONResponse
+import traceback
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Ensure all unhandled exceptions return JSON, never HTML"""
+    print(f"❌ Unhandled error on {request.url}: {exc}")
+    traceback.print_exc()
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Server error: {str(exc)}"}
+    )
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -50,23 +112,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve static files (CSS, JS, images)
-if os.path.exists("frontend/static"):
-    app.mount("/static", StaticFiles(directory="frontend/static"), name="static")
-elif os.path.exists("../frontend/static"):
-    app.mount("/static", StaticFiles(directory="../frontend/static"), name="static")
+# ============================================================
+# STATIC FILES & TEMPLATES — Single clean mount (BUG FIX)
+# ============================================================
+_base = pathlib.Path(__file__).parent.parent.parent  # → project root
+_static_dir = _base / "frontend" / "static"
+_tmpl_dir   = _base / "frontend" / "templates"
 
-# Jinja2 templates for server-rendered HTML pages
-# Auto-detect templates directory (works from both /backend and /jewellery-erp root)
-import pathlib
-_base = pathlib.Path(__file__).parent.parent.parent  # backend/app -> backend -> jewellery-erp
-_tmpl = _base / "frontend" / "templates"
-if not _tmpl.exists():
-    _tmpl = pathlib.Path("frontend/templates")
-templates = Jinja2Templates(directory=str(_tmpl))
-_static = _base / "frontend" / "static"
-if _static.exists() and not os.path.exists("frontend/static"):
-    app.mount("/static", StaticFiles(directory=str(_static)), name="static")
+# Fallback: if running from project root directly (e.g. uvicorn main:app)
+if not _static_dir.exists():
+    _static_dir = pathlib.Path("frontend/static")
+if not _tmpl_dir.exists():
+    _tmpl_dir = pathlib.Path("frontend/templates")
+
+# Mount static ONCE only
+if _static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
+else:
+    print("⚠️  WARNING: frontend/static directory not found!")
+
+templates = Jinja2Templates(directory=str(_tmpl_dir))
 
 # ============================================================
 # REGISTER ALL API ROUTERS
@@ -79,15 +144,17 @@ app.include_router(karigar_router)
 app.include_router(scrap_router)
 app.include_router(refinery_router)
 app.include_router(inventory_router)
+app.include_router(finished_goods_router)
 app.include_router(costing_router)
 app.include_router(reports_router)
 app.include_router(users_router)
 app.include_router(customers_router)
 app.include_router(departments_router)
+app.include_router(designs_router)
 
 
 # ============================================================
-# HELPER: Get current user from cookie (for HTML pages)
+# HELPER: Get current user from cookie (for HTML page routes)
 # ============================================================
 def _get_page_user(request: Request, db: Session = Depends(get_db)):
     """Non-throwing auth check for HTML page routes"""
@@ -105,9 +172,27 @@ def _get_page_user(request: Request, db: Session = Depends(get_db)):
     return None
 
 
+def _render_or_deny(request, templates, template_name, user, page_key, extra_ctx=None):
+    """Render page if user has access, else return 403 page"""
+    if not has_page_access(user.role.name, page_key):
+        ctx = {
+            "request": request,
+            "user": user,
+            "denied_page": page_key,
+            "user_permissions": get_user_permissions(user.role.name)
+        }
+        return templates.TemplateResponse("403.html", ctx, status_code=403)
+    ctx = {"request": request, "user": user, "active_page": page_key,
+           "user_permissions": get_user_permissions(user.role.name)}
+    if extra_ctx:
+        ctx.update(extra_ctx)
+    return templates.TemplateResponse(template_name, ctx)
+
+
 # ============================================================
-# HTML PAGE ROUTES
+# HTML PAGE ROUTES — All with role-based access control
 # ============================================================
+
 @app.get("/login", response_class=HTMLResponse)
 def login_page(request: Request):
     return templates.TemplateResponse("login.html", {"request": request})
@@ -118,7 +203,7 @@ def dashboard_page(request: Request, db: Session = Depends(get_db)):
     user = _get_page_user(request, db)
     if not user:
         return RedirectResponse("/login")
-    return templates.TemplateResponse("dashboard.html", {"request": request, "user": user})
+    return _render_or_deny(request, templates, "dashboard.html", user, "dashboard")
 
 
 @app.get("/jobs", response_class=HTMLResponse)
@@ -126,7 +211,7 @@ def jobs_page(request: Request, db: Session = Depends(get_db)):
     user = _get_page_user(request, db)
     if not user:
         return RedirectResponse("/login")
-    return templates.TemplateResponse("jobs.html", {"request": request, "user": user})
+    return _render_or_deny(request, templates, "jobs.html", user, "jobs")
 
 
 @app.get("/metal", response_class=HTMLResponse)
@@ -134,7 +219,7 @@ def metal_page(request: Request, db: Session = Depends(get_db)):
     user = _get_page_user(request, db)
     if not user:
         return RedirectResponse("/login")
-    return templates.TemplateResponse("metal.html", {"request": request, "user": user})
+    return _render_or_deny(request, templates, "metal.html", user, "metal")
 
 
 @app.get("/karigar", response_class=HTMLResponse)
@@ -142,7 +227,7 @@ def karigar_page(request: Request, db: Session = Depends(get_db)):
     user = _get_page_user(request, db)
     if not user:
         return RedirectResponse("/login")
-    return templates.TemplateResponse("karigar.html", {"request": request, "user": user})
+    return _render_or_deny(request, templates, "karigar.html", user, "karigar")
 
 
 @app.get("/scrap", response_class=HTMLResponse)
@@ -150,7 +235,7 @@ def scrap_page(request: Request, db: Session = Depends(get_db)):
     user = _get_page_user(request, db)
     if not user:
         return RedirectResponse("/login")
-    return templates.TemplateResponse("scrap.html", {"request": request, "user": user})
+    return _render_or_deny(request, templates, "scrap.html", user, "scrap")
 
 
 @app.get("/refinery", response_class=HTMLResponse)
@@ -158,7 +243,7 @@ def refinery_page(request: Request, db: Session = Depends(get_db)):
     user = _get_page_user(request, db)
     if not user:
         return RedirectResponse("/login")
-    return templates.TemplateResponse("refinery.html", {"request": request, "user": user})
+    return _render_or_deny(request, templates, "refinery.html", user, "refinery")
 
 
 @app.get("/inventory", response_class=HTMLResponse)
@@ -166,7 +251,7 @@ def inventory_page(request: Request, db: Session = Depends(get_db)):
     user = _get_page_user(request, db)
     if not user:
         return RedirectResponse("/login")
-    return templates.TemplateResponse("inventory.html", {"request": request, "user": user})
+    return _render_or_deny(request, templates, "inventory.html", user, "inventory")
 
 
 @app.get("/costing", response_class=HTMLResponse)
@@ -174,7 +259,7 @@ def costing_page(request: Request, db: Session = Depends(get_db)):
     user = _get_page_user(request, db)
     if not user:
         return RedirectResponse("/login")
-    return templates.TemplateResponse("costing.html", {"request": request, "user": user})
+    return _render_or_deny(request, templates, "costing.html", user, "costing")
 
 
 @app.get("/reports", response_class=HTMLResponse)
@@ -182,7 +267,7 @@ def reports_page(request: Request, db: Session = Depends(get_db)):
     user = _get_page_user(request, db)
     if not user:
         return RedirectResponse("/login")
-    return templates.TemplateResponse("reports.html", {"request": request, "user": user})
+    return _render_or_deny(request, templates, "reports.html", user, "reports")
 
 
 @app.get("/users", response_class=HTMLResponse)
@@ -190,7 +275,7 @@ def users_page(request: Request, db: Session = Depends(get_db)):
     user = _get_page_user(request, db)
     if not user:
         return RedirectResponse("/login")
-    return templates.TemplateResponse("users.html", {"request": request, "user": user})
+    return _render_or_deny(request, templates, "users.html", user, "users")
 
 
 @app.get("/scale", response_class=HTMLResponse)
@@ -198,8 +283,7 @@ def scale_page(request: Request, db: Session = Depends(get_db)):
     user = _get_page_user(request, db)
     if not user:
         return RedirectResponse("/login")
-    return templates.TemplateResponse("scale.html", {"request": request, "user": user})
-
+    return _render_or_deny(request, templates, "scale.html", user, "scale")
 
 
 @app.get("/barcode", response_class=HTMLResponse)
@@ -207,12 +291,44 @@ def barcode_page(request: Request, db: Session = Depends(get_db)):
     user = _get_page_user(request, db)
     if not user:
         return RedirectResponse("/login")
-    return templates.TemplateResponse("barcode.html", {"request": request, "user": user})
+    return _render_or_deny(request, templates, "barcode.html", user, "barcode")
+
+
+@app.get("/finished-goods", response_class=HTMLResponse)
+def finished_goods_page(request: Request, db: Session = Depends(get_db)):
+    user = _get_page_user(request, db)
+    if not user:
+        return RedirectResponse("/login")
+    return _render_or_deny(request, templates, "finished_goods.html", user, "finished_goods")
+
+
+@app.get("/designs", response_class=HTMLResponse)
+def designs_page(request: Request, db: Session = Depends(get_db)):
+    user = _get_page_user(request, db)
+    if not user:
+        return RedirectResponse("/login")
+    return _render_or_deny(request, templates, "designs.html", user, "designs")
+
+
+@app.get("/customers", response_class=HTMLResponse)
+def customers_page(request: Request, db: Session = Depends(get_db)):
+    user = _get_page_user(request, db)
+    if not user:
+        return RedirectResponse("/login")
+    return _render_or_deny(request, templates, "customers.html", user, "customers")
+
+
+@app.get("/departments", response_class=HTMLResponse)
+def departments_page(request: Request, db: Session = Depends(get_db)):
+    user = _get_page_user(request, db)
+    if not user:
+        return RedirectResponse("/login")
+    return _render_or_deny(request, templates, "departments.html", user, "departments")
 
 
 @app.get("/health")
 def health_check():
-    """Health check endpoint for Docker/monitoring"""
+    """Health check endpoint"""
     return {"status": "ok", "app": settings.APP_NAME, "version": settings.APP_VERSION}
 
 

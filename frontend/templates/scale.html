@@ -143,7 +143,7 @@
           Weight to Log
         </div>
         <div id="logWeightConfirm" style="font-size:32px;font-weight:700;color:#C9A84C;
-             font-family:'Cormorant Garamond',serif;margin:4px 0">
+             font-family:'DM Mono','Courier New',monospace;margin:4px 0">
           0.0000 g
         </div>
         <div id="logWeightSrc" style="font-size:10px;color:#5a4a2a">
@@ -179,16 +179,16 @@
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
         <div>
           <div style="color:#C9A84C;font-weight:600;margin-bottom:6px">RS232 Scale Connection Steps:</div>
-          <div>1. Scale ko server PC se RS232 cable se connect karo</div>
-          <div>2. Windows: Device Manager → Ports (COM & LPT) → COM number dekho</div>
+          <div>1. Connect the scale to the server PC via RS232 cable</div>
+          <div>2. Windows: Open Device Manager → Ports (COM &amp; LPT) → Note the COM port number</div>
           <div>3. Linux: <code style="color:#4cc96f">ls /dev/ttyUSB* /dev/ttyS*</code></div>
-          <div>4. <code style="color:#4cc96f">backend/.env</code> file mein set karo:</div>
+          <div>4. Set the following in your <code style="color:#4cc96f">backend/.env</code> file:</div>
           <div style="margin:6px 0;padding:8px;background:#0a0908;border-radius:4px;font-family:monospace">
             <div style="color:#4cc96f">SCALE_SIMULATION_MODE=false</div>
             <div style="color:#4cc96f">SCALE_PORT=COM3</div>
             <div style="color:#4cc96f">SCALE_BAUDRATE=9600</div>
           </div>
-          <div>5. Server restart karo: <code style="color:#4cc96f">uvicorn main:app --reload</code></div>
+          <div>5. Restart the server: <code style="color:#4cc96f">uvicorn main:app --reload</code></div>
         </div>
         <div>
           <div style="color:#C9A84C;font-weight:600;margin-bottom:6px">Available Ports:</div>
@@ -239,7 +239,7 @@
 <style>
 /* Weight display — large gold readout */
 .weight-display {
-  font-family: 'Cormorant Garamond', serif;
+  font-family: 'DM Mono', 'Courier New', monospace;
   font-size: 72px;
   font-weight: 700;
   color: #C9A84C;

@@ -18,7 +18,7 @@ export default function ReportsPage() {
 
   const TABS = [
     { key: 'dashboard', label: 'Production Dashboard' },
-    { key: 'wages', label: 'Karigar Wages' },
+    { key: 'wages', label: 'Artisan Wages' },
     { key: 'scrap', label: 'Scrap Analysis' },
     { key: 'profit', label: 'Profitability' },
     { key: 'audit', label: 'Audit Trail' },
@@ -70,9 +70,9 @@ export default function ReportsPage() {
       {/* WAGES */}
       {tab === 'wages' && wages && (
         <div className="erp-card">
-          <div className="p-4 border-b border-[#2a2318] text-[10px] text-[#5a4a2a] uppercase tracking-widest">Karigar Wages Report</div>
+          <div className="p-4 border-b border-[#2a2318] text-[10px] text-[#5a4a2a] uppercase tracking-widest">Artisan Wages Report</div>
           <table className="erp-table">
-            <thead><tr><th>Karigar</th><th>Code</th><th>Skill</th><th>Total Wages</th><th>Metal Balance</th></tr></thead>
+            <thead><tr><th>Artisan</th><th>Code</th><th>Skill</th><th>Total Wages</th><th>Metal Balance</th></tr></thead>
             <tbody>
               {wages.map((k: any) => (
                 <tr key={k.code}>

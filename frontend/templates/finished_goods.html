@@ -1,0 +1,439 @@
+{% extends "base.html" %}
+{% block title %}Finished Goods{% endblock %}
+{% block page_title %}Finished Goods{% endblock %}
+{% block page_subtitle %}QC · HALLMARKING · DISPATCH{% endblock %}
+
+{% block content %}
+
+<!-- METRIC STRIP -->
+<div class="metric-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px">
+  <div class="metric-card">
+    <div class="metric-label">Total Pieces</div>
+    <div class="metric-value text-gold" id="statTotal">—</div>
+    <div class="metric-sub">In finished goods</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">Ready to Dispatch</div>
+    <div class="metric-value text-green" id="statReady">—</div>
+    <div class="metric-sub">QC passed</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">Dispatched</div>
+    <div class="metric-value" style="color:var(--blue)" id="statDispatched">—</div>
+    <div class="metric-sub">Sent to customer</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">QC Pending</div>
+    <div class="metric-value text-orange" id="statQcPending">—</div>
+    <div class="metric-sub">Awaiting inspection</div>
+  </div>
+</div>
+
+<!-- TOOLBAR -->
+<div class="toolbar" style="margin-bottom:16px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px">
+  <div class="toolbar-left">
+    <div class="tab-group">
+      <button class="tab active" onclick="filterStatus('',this)">All</button>
+      <button class="tab" onclick="filterStatus('Ready',this)">Ready</button>
+      <button class="tab" onclick="filterStatus('Dispatched',this)">Dispatched</button>
+      <button class="tab" onclick="filterStatus('On Hold',this)">On Hold</button>
+    </div>
+  </div>
+  <div class="toolbar-right">
+    {% if user.role.name in ['Admin', 'QC Officer'] %}
+    <button class="btn btn-danger btn-sm" onclick="openModal('qcFailModal')">✕ QC Fail</button>
+    <button class="btn btn-secondary btn-sm" onclick="openModal('qcPassModal')">✓ QC Pass</button>
+    {% endif %}
+  </div>
+</div>
+
+<!-- MAIN LAYOUT -->
+<div style="display:grid;grid-template-columns:1fr 280px;gap:14px">
+
+  <!-- TABLE -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Finished Goods Register</span>
+      <span class="text-xs text-muted" id="fgCount"></span>
+    </div>
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Item Code</th>
+            <th>Job</th>
+            <th>Final Weight</th>
+            <th>Pieces</th>
+            <th>Hallmark No</th>
+            <th>QC Officer</th>
+            <th>QC Date</th>
+            <th>Status</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="fgBody">
+          <tr><td colspan="9" class="empty-state">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- RIGHT PANELS -->
+  <div style="display:flex;flex-direction:column;gap:14px">
+
+    <!-- QC Pending jobs -->
+    <div class="card">
+      <div class="card-header"><span class="card-title">QC Pending Jobs</span></div>
+      <div id="qcPendingList" class="card-body">
+        <div class="empty-state text-xs">Loading...</div>
+      </div>
+    </div>
+
+    <!-- Selected item detail -->
+    <div class="card">
+      <div class="card-header"><span class="card-title">Item Detail</span></div>
+      <div id="fgDetail" class="card-body">
+        <div class="text-muted text-xs" style="padding:4px">Click a row to view details</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ════════════════ MODALS ════════════════ -->
+
+<!-- QC PASS -->
+<div class="modal-overlay hidden" id="qcPassModal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" style="color:#6dbf8b">✓ QC Pass — Create Finished Good</span>
+      <button class="modal-close" onclick="closeModal('qcPassModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Job (QC Pending) *</label>
+        <select id="qcp_job" class="form-control">
+          <option value="">Loading...</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Final Weight (g) *</label>
+          <input id="qcp_weight" type="number" step="0.0001" min="0.0001" class="form-control" placeholder="0.0000">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Pieces Count *</label>
+          <input id="qcp_pieces" type="number" min="1" class="form-control" value="1">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Hallmark Number</label>
+        <input id="qcp_hallmark" class="form-control" placeholder="e.g. BIS916-XXXXX">
+      </div>
+      <div class="form-group">
+        <label class="form-label">QC Notes</label>
+        <textarea id="qcp_notes" class="form-control" rows="2" placeholder="Optional remarks..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('qcPassModal')">Cancel</button>
+      <button class="btn btn-primary" id="qcpBtn" style="background:#1a5c30;border-color:#1a5c30" onclick="submitQcPass()">✓ Confirm QC Pass</button>
+    </div>
+  </div>
+</div>
+
+<!-- QC FAIL -->
+<div class="modal-overlay hidden" id="qcFailModal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" style="color:var(--red)">✕ QC Fail — Reject Job</span>
+      <button class="modal-close" onclick="closeModal('qcFailModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Job (QC Pending) *</label>
+        <select id="qcf_job" class="form-control">
+          <option value="">Loading...</option>
+        </select>
+      </div>
+      <div style="background:#1f0e0e;border:1px solid #4a0a0a;border-radius:6px;padding:10px 14px;margin-bottom:14px;font-size:11px;color:var(--red)">
+        ⚠ Job status will be set to <strong>QC Rejected</strong> and sent back for rework.
+      </div>
+      <div class="form-group">
+        <label class="form-label">Rejection Reason *</label>
+        <textarea id="qcf_reason" class="form-control" rows="3" placeholder="Describe the defect or reason for rejection..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('qcFailModal')">Cancel</button>
+      <button class="btn btn-danger" id="qcfBtn" onclick="submitQcFail()">✕ Confirm Reject</button>
+    </div>
+  </div>
+</div>
+
+<!-- DISPATCH -->
+<div class="modal-overlay hidden" id="dispatchModal">
+  <div class="modal" style="width:440px">
+    <div class="modal-header">
+      <span class="modal-title">Dispatch Finished Good</span>
+      <button class="modal-close" onclick="closeModal('dispatchModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <!-- Item info box -->
+      <div id="dispatchItemInfo" style="background:#0e1520;border:1px solid #1a2a3a;border-radius:6px;padding:12px;margin-bottom:16px;font-size:12px"></div>
+      <div class="form-group">
+        <label class="form-label">Dispatch Reference *</label>
+        <input id="disp_ref" class="form-control" placeholder="e.g. DISP-2025-001 or Invoice No.">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Dispatch Date</label>
+        <input id="disp_date" type="date" class="form-control">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('dispatchModal')">Cancel</button>
+      <button class="btn btn-primary" id="dispBtn" onclick="submitDispatch()">⬆ Dispatch</button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ── Constants ──────────────────────────────────────────────────────────────────
+const STATUS_COLOR = {
+  'Ready':      'badge-green',
+  'Dispatched': 'badge-blue',
+  'On Hold':    'badge-orange',
+  'Returned':   'badge-red',
+};
+
+// ── State ──────────────────────────────────────────────────────────────────────
+let allGoods      = [];
+let currentStatus = '';
+let selectedJobId = null;
+
+// ── Tab filter ─────────────────────────────────────────────────────────────────
+function filterStatus(status, btn) {
+  document.querySelectorAll('.tab-group .tab').forEach(t => t.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  currentStatus = status;
+  renderTable(allGoods);
+}
+
+// ── Load finished goods ────────────────────────────────────────────────────────
+async function loadFG() {
+  try {
+    allGoods = await API.get('/api/v1/finished-goods/');
+    renderTable(allGoods);
+    updateStats(allGoods);
+  } catch(e) {
+    document.getElementById('fgBody').innerHTML =
+      '<tr><td colspan="9" class="empty-state">Error loading data</td></tr>';
+    showToast('Failed to load finished goods', 'error');
+  }
+}
+
+function renderTable(data) {
+  const filtered = currentStatus ? data.filter(g => g.status === currentStatus) : data;
+  document.getElementById('fgCount').textContent =
+    `${filtered.length}${currentStatus ? ' · ' + currentStatus : ''}`;
+
+  {% if user.role.name in ['Admin', 'Production Manager'] %}
+  const canDispatch = true;
+  {% else %}
+  const canDispatch = false;
+  {% endif %}
+
+  document.getElementById('fgBody').innerHTML = filtered.length
+    ? filtered.map(g => `
+      <tr style="cursor:pointer" onclick="showDetail(${g.job_id})">
+        <td class="text-gold bold" style="font-family:monospace">${g.item_code || '—'}</td>
+        <td class="text-muted">#${g.job_id}</td>
+        <td style="font-family:monospace">${g.final_weight != null ? parseFloat(g.final_weight).toFixed(4) + 'g' : '—'}</td>
+        <td class="text-muted">${g.pieces_count || 1} pcs</td>
+        <td class="text-muted" style="font-family:monospace">${g.hallmark_no || '—'}</td>
+        <td class="text-muted text-sm">${g.qc_officer_name || '—'}</td>
+        <td class="text-muted text-sm">${g.qc_date ? fmtDate(g.qc_date) : '—'}</td>
+        <td><span class="badge ${STATUS_COLOR[g.status] || 'badge-gray'}">${g.status}</span></td>
+        <td>
+          ${canDispatch && g.status === 'Ready'
+            ? `<button class="btn btn-primary btn-sm"
+                onclick="event.stopPropagation();openDispatch(${g.job_id},'${g.item_code}',${g.final_weight},${g.pieces_count})">
+                ⬆ Dispatch
+              </button>`
+            : g.status === 'Dispatched'
+              ? `<span class="text-xs text-muted" style="font-family:monospace">${g.dispatch_ref || ''}</span>`
+              : ''}
+        </td>
+      </tr>`).join('')
+    : `<tr><td colspan="9" class="empty-state">No finished goods${currentStatus ? ' · ' + currentStatus : ''}</td></tr>`;
+}
+
+function updateStats(data) {
+  document.getElementById('statTotal').textContent     = data.length;
+  document.getElementById('statReady').textContent     = data.filter(g => g.status === 'Ready').length;
+  document.getElementById('statDispatched').textContent = data.filter(g => g.status === 'Dispatched').length;
+}
+
+// ── QC Pending jobs panel ──────────────────────────────────────────────────────
+async function loadQcPending() {
+  try {
+    const jobs = await API.get('/api/v1/jobs/?status=QC+Pending&per_page=50');
+    const list = jobs.items || [];
+    document.getElementById('statQcPending').textContent = list.length;
+
+    document.getElementById('qcPendingList').innerHTML = list.length
+      ? list.map(j => `
+          <div style="padding:8px 0;border-bottom:1px solid var(--border-light);display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <div class="text-gold bold" style="font-size:13px">${j.job_code}</div>
+              <div class="text-muted text-xs">${j.customer_name || '—'} · ${j.metal_type}</div>
+            </div>
+            {% if user.role.name in ['Admin', 'QC Officer'] %}
+            <button class="btn btn-secondary btn-sm" onclick="quickQcPass(${j.id},'${j.job_code}')">✓ Pass</button>
+            {% endif %}
+          </div>`).join('')
+      : '<div class="text-muted text-xs" style="padding:4px">No jobs pending QC</div>';
+
+    // Populate QC modal dropdowns
+    const opts = list.length
+      ? list.map(j => `<option value="${j.id}">${j.job_code} — ${j.customer_name || ''}</option>`).join('')
+      : '<option value="">No QC pending jobs</option>';
+    document.getElementById('qcp_job').innerHTML = opts;
+    document.getElementById('qcf_job').innerHTML = opts;
+  } catch(e) { /* silent */ }
+}
+
+// ── Item detail panel ──────────────────────────────────────────────────────────
+function showDetail(jobId) {
+  const g = allGoods.find(x => x.job_id === jobId);
+  if (!g) return;
+  selectedJobId = jobId;
+
+  document.getElementById('fgDetail').innerHTML = [
+    ['Item Code',   `<span class="text-gold bold" style="font-family:monospace">${g.item_code || '—'}</span>`],
+    ['Job',         `#${g.job_id}`],
+    ['Final Weight', g.final_weight != null ? parseFloat(g.final_weight).toFixed(4) + 'g' : '—'],
+    ['Pieces',      (g.pieces_count || 1) + ' pcs'],
+    ['Hallmark No', g.hallmark_no || '—'],
+    ['QC Officer',  g.qc_officer_name || '—'],
+    ['QC Date',     g.qc_date ? fmtDate(g.qc_date) : '—'],
+    ['QC Notes',    `<span class="text-muted">${g.qc_notes || '—'}</span>`],
+    ['Status',      `<span class="badge ${STATUS_COLOR[g.status] || 'badge-gray'}">${g.status}</span>`],
+    ...(g.dispatch_ref  ? [['Dispatch Ref',  `<span class="text-gold" style="font-family:monospace">${g.dispatch_ref}</span>`]] : []),
+    ...(g.dispatch_date ? [['Dispatch Date', fmtDate(g.dispatch_date)]] : []),
+  ].map(([label, val]) => `
+    <div class="detail-row">
+      <span class="detail-label">${label}</span>
+      <span class="detail-value">${val}</span>
+    </div>`).join('');
+}
+
+// ── QC Pass ────────────────────────────────────────────────────────────────────
+function quickQcPass(jobId, jobCode) {
+  document.getElementById('qcp_job').value = jobId;
+  openModal('qcPassModal');
+}
+
+async function submitQcPass() {
+  const jobId  = parseInt(document.getElementById('qcp_job').value);
+  const weight = parseFloat(document.getElementById('qcp_weight').value);
+  if (!jobId)             return showToast('Select a job', 'error');
+  if (!weight || weight <= 0) return showToast('Enter final weight', 'error');
+
+  const btn = document.getElementById('qcpBtn');
+  btn.disabled = true; btn.textContent = 'Processing...';
+  try {
+    const r = await API.post('/api/v1/finished-goods/qc-pass', {
+      job_id:      jobId,
+      final_weight: weight,
+      pieces_count: parseInt(document.getElementById('qcp_pieces').value) || 1,
+      hallmark_no:  document.getElementById('qcp_hallmark').value || null,
+      qc_notes:     document.getElementById('qcp_notes').value    || null,
+    });
+    showToast(`QC Passed ✓ — ${r.item_code}`);
+    closeModal('qcPassModal');
+    ['qcp_weight','qcp_hallmark','qcp_notes'].forEach(id => {
+      document.getElementById(id).value = '';
+    });
+    document.getElementById('qcp_pieces').value = '1';
+    loadFG(); loadQcPending();
+  } catch(e) {
+    showToast(e.message || 'QC pass failed', 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = '✓ Confirm QC Pass';
+  }
+}
+
+// ── QC Fail ────────────────────────────────────────────────────────────────────
+async function submitQcFail() {
+  const jobId  = parseInt(document.getElementById('qcf_job').value);
+  const reason = document.getElementById('qcf_reason').value.trim();
+  if (!jobId)  return showToast('Select a job', 'error');
+  if (!reason) return showToast('Rejection reason required', 'error');
+
+  const btn = document.getElementById('qcfBtn');
+  btn.disabled = true; btn.textContent = 'Rejecting...';
+  try {
+    await API.post(`/api/v1/finished-goods/qc-fail?job_id=${jobId}&reason=${encodeURIComponent(reason)}`);
+    showToast('QC Rejected — Job sent back for rework');
+    closeModal('qcFailModal');
+    document.getElementById('qcf_reason').value = '';
+    loadFG(); loadQcPending();
+  } catch(e) {
+    showToast(e.message || 'QC fail failed', 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = '✕ Confirm Reject';
+  }
+}
+
+// ── Dispatch ───────────────────────────────────────────────────────────────────
+function openDispatch(jobId, itemCode, weight, pieces) {
+  selectedJobId = jobId;
+  document.getElementById('dispatchItemInfo').innerHTML = `
+    <div style="display:flex;gap:16px;flex-wrap:wrap">
+      <div><div class="text-xs text-muted" style="margin-bottom:2px">Item Code</div>
+        <div class="text-gold bold" style="font-family:monospace">${itemCode}</div></div>
+      <div><div class="text-xs text-muted" style="margin-bottom:2px">Job</div>
+        <div>#${jobId}</div></div>
+      <div><div class="text-xs text-muted" style="margin-bottom:2px">Weight</div>
+        <div style="font-family:monospace">${parseFloat(weight).toFixed(4)}g</div></div>
+      <div><div class="text-xs text-muted" style="margin-bottom:2px">Pieces</div>
+        <div>${pieces} pc${pieces !== 1 ? 's' : ''}</div></div>
+    </div>`;
+  document.getElementById('disp_ref').value  = '';
+  document.getElementById('disp_date').value = new Date().toISOString().split('T')[0];
+  openModal('dispatchModal');
+}
+
+async function submitDispatch() {
+  const ref  = document.getElementById('disp_ref').value.trim();
+  const date = document.getElementById('disp_date').value;
+  if (!ref) return showToast('Dispatch reference required', 'error');
+
+  const btn = document.getElementById('dispBtn');
+  btn.disabled = true; btn.textContent = 'Dispatching...';
+  try {
+    const r = await API.post('/api/v1/finished-goods/dispatch', {
+      job_id:       selectedJobId,
+      dispatch_ref: ref,
+      dispatch_date: date || null,
+    });
+    showToast(`Dispatched ✓ — Ref: ${r.dispatch_ref}`);
+    closeModal('dispatchModal');
+    loadFG();
+  } catch(e) {
+    showToast(e.message || 'Dispatch failed', 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = '⬆ Dispatch';
+  }
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────────
+loadFG();
+loadQcPending();
+</script>
+{% endblock %}

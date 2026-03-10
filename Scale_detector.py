@@ -4,8 +4,8 @@ scale_detector.py — Auto-Detect RS232 Scale on Windows
 Ye script automatically:
 1. Sab available COM ports dhundta hai
 2. Har port par har baud rate try karta hai
-3. Scale ka response dekhta hai
-4. Aapko exact SCALE_PORT aur SCALE_BAUDRATE batata hai
+3. Monitors scale response
+4. Reports the correct SCALE_PORT and SCALE_BAUDRATE settings
 
 USAGE:
   python scale_detector.py
@@ -20,10 +20,10 @@ import time
 import re
 import sys
 
-# Sab common baud rates — sabse common pehle
+# All common baud rates — most common first
 BAUD_RATES = [9600, 4800, 2400, 19200, 1200, 38400, 57600, 115200]
 
-# Scale ko trigger karne ke commands
+# Commands to trigger scale output
 TRIGGER_COMMANDS = [
     b'SI\r\n',    # Mettler Toledo / Sartorius — Send Immediate
     b'P\r\n',     # Most scales — Print command
@@ -54,14 +54,14 @@ def list_ports():
         print(f"{RED}❌ No COM ports found!{RESET}")
         print("""
 Possible reasons:
-  1. Scale ka RS232 cable connected nahi hai
-  2. USB-to-RS232 adapter ka driver install nahi hua
+  1. Scale RS232 cable is not connected
+  2. USB-to-RS232 adapter driver is not installed
   
 Fix:
-  - Scale ON karo aur RS232 cable properly connect karo
-  - USB-to-RS232 adapter use kar rahe ho toh driver install karo
+  - Turn on the scale and properly connect the RS232 cable
+  - If using a USB-to-RS232 adapter, install the driver first
     (Prolific PL2303 ya FTDI FT232 driver)
-  - Device Manager mein 'Ports (COM & LPT)' check karo
+  - Check 'Ports (COM & LPT)' in Device Manager
 """)
         return []
     
@@ -193,10 +193,10 @@ Troubleshooting:
   1. Scale ON hai? Check power
   2. RS232 cable properly connected hai? Try re-plugging
   3. Scale ka RS232 port enable hai? (some scales have menu option)
-  4. Koi aur software scale use kar raha hai? Band karo
-  5. Different RS232 cable try karo (straight vs null modem)
+  4. Is another application using the scale? Close it
+  5. Try a different RS232 cable (straight vs null modem)
   
-Scale ke buttons se print command try karo manually —
+Try triggering the print command manually using scale buttons —
 koi output print/display hona chahiye.
 """)
     else:

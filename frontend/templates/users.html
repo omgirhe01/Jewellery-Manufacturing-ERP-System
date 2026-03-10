@@ -1,73 +1,416 @@
 {% extends "base.html" %}
 {% block title %}Users{% endblock %}
 {% block page_title %}User Management{% endblock %}
-{% block page_subtitle %}ROLES & ACCESS CONTROL{% endblock %}
+{% block page_subtitle %}ROLES · ACCESS CONTROL · SYSTEM USERS{% endblock %}
+
 {% block content %}
-<div class="card">
-  <div class="card-header">
-    <span class="card-title">System Users</span>
-    <button class="btn btn-primary btn-sm" onclick="openModal('newUserModal')">+ Add User</button>
+
+{% if user.role.name != 'Admin' %}
+<div style="background:#1f0e0e;border:1px solid #4a1a1a;border-radius:8px;padding:20px;text-align:center;color:var(--red)">
+  ⚠ Access Restricted — Only Admins can manage users.
+</div>
+{% else %}
+
+<!-- METRIC STRIP -->
+<div class="metric-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px">
+  <div class="metric-card">
+    <div class="metric-label">Total Users</div>
+    <div class="metric-value text-gold" id="kTotal">—</div>
+    <div class="metric-sub">All system users</div>
   </div>
-  <table class="data-table">
-    <thead><tr><th>Name</th><th>Username</th><th>Email</th><th>Role</th><th>Status</th><th>Action</th></tr></thead>
-    <tbody id="usersBody"><tr><td colspan="6" class="empty-state">Loading...</td></tr></tbody>
-  </table>
+  <div class="metric-card">
+    <div class="metric-label">Active</div>
+    <div class="metric-value text-green" id="kActive">—</div>
+    <div class="metric-sub">Can login</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">Inactive</div>
+    <div class="metric-value text-orange" id="kInactive">—</div>
+    <div class="metric-sub">Deactivated</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">Roles</div>
+    <div class="metric-value" style="color:var(--blue)" id="kRoles">—</div>
+    <div class="metric-sub">Permission levels</div>
+  </div>
 </div>
 
-<div style="margin-top:16px;display:grid;grid-template-columns:repeat(3,1fr);gap:14px">
-  {% for role, color in [('Admin','badge-red'),('Production Manager','badge-orange'),('Department Operator','badge-blue'),('Metal Store Manager','badge-gold'),('Accountant','badge-green'),('QC Officer','badge-purple')] %}
+<!-- TOOLBAR -->
+<div class="toolbar" style="margin-bottom:16px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px">
+  <div class="toolbar-left">
+    <div class="tab-group">
+      <button class="tab active" onclick="filterActive('',this)">All</button>
+      <button class="tab" onclick="filterActive(true,this)">Active</button>
+      <button class="tab" onclick="filterActive(false,this)">Inactive</button>
+    </div>
+  </div>
+  <div class="toolbar-right">
+    <input id="userSearch" class="search-input" placeholder="Search name / username / role..." oninput="filterUsers()">
+    <button class="btn btn-primary btn-sm" onclick="openAddModal()">+ Add User</button>
+  </div>
+</div>
+
+<!-- MAIN LAYOUT -->
+<div style="display:grid;grid-template-columns:1fr 270px;gap:14px;margin-bottom:20px">
+
+  <!-- TABLE -->
   <div class="card">
-    <div class="card-body" style="padding:16px">
-      <div style="display:flex;align-items:center;gap:10px">
-        <span class="badge {{ color }}">{{ role }}</span>
+    <div class="card-header">
+      <span class="card-title">System Users</span>
+      <span class="text-xs text-muted" id="userCount"></span>
+    </div>
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Username</th>
+            <th>Email</th>
+            <th>Role</th>
+            <th>Last Login</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="usersBody">
+          <tr><td colspan="7" class="empty-state">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL — selected user detail -->
+  <div style="display:flex;flex-direction:column;gap:14px">
+    <div class="card">
+      <div class="card-header"><span class="card-title">User Detail</span></div>
+      <div id="userDetail" class="card-body">
+        <div class="text-muted text-xs" style="padding:4px">Click a row to view details</div>
       </div>
     </div>
   </div>
-  {% endfor %}
+
 </div>
 
-<div class="modal-overlay hidden" id="newUserModal">
-  <div class="modal">
-    <div class="modal-header"><span class="modal-title">Add User</span><button class="modal-close" onclick="closeModal('newUserModal')">×</button></div>
+<!-- ROLE PERMISSIONS REFERENCE -->
+<div style="margin-bottom:4px">
+  <div class="text-xs text-muted" style="text-transform:uppercase;letter-spacing:.1em;margin-bottom:12px">Role Permissions Reference</div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+    {% for role, color, perms in [
+      ('Admin',              'badge-red',    'Full access to all modules'),
+      ('Production Manager', 'badge-orange', 'Jobs, Karigar, Metal, Reports'),
+      ('Department Operator','badge-blue',   'Jobs, Barcode scan, Scale'),
+      ('Metal Store Manager','badge-gold',   'Metal ledger, Issue, Return'),
+      ('Accountant',         'badge-green',  'Costing, Reports, Metal view'),
+      ('QC Officer',         'badge-purple', 'QC stage approval, Reports'),
+    ] %}
+    <div class="card">
+      <div class="card-body" style="padding:14px">
+        <span class="badge {{ color }}" style="margin-bottom:6px;display:inline-block">{{ role }}</span>
+        <div class="text-xs text-muted">{{ perms }}</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+{% endif %}
+
+
+<!-- ════════════════ MODALS ════════════════ -->
+
+<!-- ADD USER -->
+<div class="modal-overlay hidden" id="addUserModal">
+  <div class="modal" style="max-width:500px">
+    <div class="modal-header">
+      <span class="modal-title">Add New User</span>
+      <button class="modal-close" onclick="closeModal('addUserModal')">×</button>
+    </div>
     <div class="modal-body">
       <div class="form-row">
-        <div class="form-group"><label class="form-label">Full Name *</label><input id="u_name" class="form-control"></div>
-        <div class="form-group"><label class="form-label">Email *</label><input id="u_email" type="email" class="form-control"></div>
+        <div class="form-group">
+          <label class="form-label">Full Name *</label>
+          <input id="u_name" class="form-control" placeholder="e.g. Ravi Kumar">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email *</label>
+          <input id="u_email" type="email" class="form-control" placeholder="email@example.com">
+        </div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label class="form-label">Username *</label><input id="u_username" class="form-control"></div>
-        <div class="form-group"><label class="form-label">Password *</label><input id="u_password" type="password" class="form-control"></div>
+        <div class="form-group">
+          <label class="form-label">Username *</label>
+          <input id="u_username" class="form-control" placeholder="e.g. ravi123">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password *</label>
+          <input id="u_password" type="password" class="form-control" placeholder="Min 6 characters">
+        </div>
       </div>
-      <div class="form-group"><label class="form-label">Role *</label><select id="u_role" class="form-control"></select></div>
+      <div class="form-group">
+        <label class="form-label">Role *</label>
+        <select id="u_role" class="form-control">
+          <option value="">Select Role</option>
+        </select>
+      </div>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-secondary" onclick="closeModal('newUserModal')">Cancel</button>
-      <button class="btn btn-primary" onclick="submitUser()">Create User</button>
+      <button class="btn btn-secondary" onclick="closeModal('addUserModal')">Cancel</button>
+      <button class="btn btn-primary" id="addUserBtn" onclick="submitAddUser()">Create User</button>
     </div>
   </div>
 </div>
+
+<!-- EDIT USER -->
+<div class="modal-overlay hidden" id="editUserModal">
+  <div class="modal" style="max-width:500px">
+    <div class="modal-header">
+      <span class="modal-title" id="editModalTitle">Edit User</span>
+      <button class="modal-close" onclick="closeModal('editUserModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="e_id">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Full Name</label>
+          <input id="e_name" class="form-control">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email</label>
+          <input id="e_email" type="email" class="form-control">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Role</label>
+        <select id="e_role" class="form-control">
+          <option value="">Select Role</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">New Password <span class="text-muted text-xs">(blank = no change)</span></label>
+        <input id="e_password" type="password" class="form-control" placeholder="Enter new password to change">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('editUserModal')">Cancel</button>
+      <button class="btn btn-primary" id="editUserBtn" onclick="submitEditUser()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
+
 {% block extra_js %}
 <script>
-const ROLE_COLORS = {Admin:'badge-red','Production Manager':'badge-orange','Department Operator':'badge-blue','Metal Store Manager':'badge-gold',Accountant:'badge-green','QC Officer':'badge-purple'};
+const ROLE_COLORS = {
+  'Admin':               'badge-red',
+  'Production Manager':  'badge-orange',
+  'Department Operator': 'badge-blue',
+  'Metal Store Manager': 'badge-gold',
+  'Accountant':          'badge-green',
+  'QC Officer':          'badge-purple',
+};
+
+let allUsers    = [];
+let allRoles    = [];
+let activeFilter = '';
+
+// ── Load ───────────────────────────────────────────────────────────────────────
 async function loadUsers() {
   try {
-    const data = await API.get('/api/v1/users/');
-    document.getElementById('usersBody').innerHTML = data.map(u=>`
-      <tr><td class="bold">${u.name}</td><td class="text-gold">${u.username}</td><td class="text-muted">${u.email}</td>
-      <td><span class="badge ${ROLE_COLORS[u.role]||'badge-gray'}">${u.role}</span></td>
-      <td><span class="badge ${u.is_active?'badge-green':'badge-red'}">${u.is_active?'Active':'Inactive'}</span></td>
-      <td><button class="btn btn-secondary btn-sm" onclick="toggleUser(${u.id},${!u.is_active})">${u.is_active?'Deactivate':'Activate'}</button></td></tr>`).join('');
-  } catch(e) { document.getElementById('usersBody').innerHTML='<tr><td colspan="6" class="empty-state">Insufficient permissions</td></tr>'; }
+    allUsers = await API.get('/api/v1/users/');
+    renderUsers(allUsers);
+    const active = allUsers.filter(u => u.is_active).length;
+    document.getElementById('kTotal').textContent    = allUsers.length;
+    document.getElementById('kActive').textContent   = active;
+    document.getElementById('kInactive').textContent = allUsers.length - active;
+  } catch(e) {
+    document.getElementById('usersBody').innerHTML =
+      '<tr><td colspan="7" class="empty-state">Insufficient permissions or failed to load</td></tr>';
+  }
 }
-async function submitUser() {
-  const b={name:document.getElementById('u_name').value,email:document.getElementById('u_email').value,username:document.getElementById('u_username').value,password:document.getElementById('u_password').value,role_id:parseInt(document.getElementById('u_role').value)};
-  try{await API.post('/api/v1/users/',b);showToast('User created');closeModal('newUserModal');loadUsers();}catch(e){showToast(e.message,'error');}
+
+async function loadRoles() {
+  try {
+    allRoles = await API.get('/api/v1/users/roles');
+    const opts = allRoles.map(r => `<option value="${r.id}">${r.name}</option>`).join('');
+    document.getElementById('u_role').innerHTML = '<option value="">Select Role</option>' + opts;
+    document.getElementById('e_role').innerHTML = '<option value="">Select Role</option>' + opts;
+    document.getElementById('kRoles').textContent = allRoles.length;
+  } catch(e) { /* silent */ }
 }
-async function toggleUser(id, isActive) {
-  try{await API.put(`/api/users/${id}`,{is_active:isActive});showToast('User updated');loadUsers();}catch(e){showToast(e.message,'error');}
+
+// ── Render ─────────────────────────────────────────────────────────────────────
+function renderUsers(users) {
+  let filtered = activeFilter === '' ? users
+    : users.filter(u => activeFilter === true ? u.is_active : !u.is_active);
+
+  const q = document.getElementById('userSearch')?.value.toLowerCase() || '';
+  if (q) filtered = filtered.filter(u =>
+    u.name.toLowerCase().includes(q) ||
+    u.username.toLowerCase().includes(q) ||
+    (u.email || '').toLowerCase().includes(q) ||
+    (u.role  || '').toLowerCase().includes(q)
+  );
+
+  document.getElementById('userCount').textContent =
+    `${filtered.length} user${filtered.length !== 1 ? 's' : ''}`;
+
+  document.getElementById('usersBody').innerHTML = filtered.length
+    ? filtered.map(u => {
+        const isSelf = u.username === '{{ user.username }}';
+        return `<tr style="cursor:pointer" onclick="showUserDetail(${u.id})">
+          <td class="bold">${u.name}</td>
+          <td class="text-gold bold" style="font-family:monospace">${u.username}</td>
+          <td class="text-muted">${u.email || '—'}</td>
+          <td><span class="badge ${ROLE_COLORS[u.role] || 'badge-gray'}">${u.role || '—'}</span></td>
+          <td class="text-muted text-sm">${u.last_login ? fmtDateTime(u.last_login) : 'Never'}</td>
+          <td><span class="badge ${u.is_active ? 'badge-green' : 'badge-red'}">${u.is_active ? 'Active' : 'Inactive'}</span></td>
+          <td>
+            <div style="display:flex;gap:6px">
+              <button class="btn btn-secondary btn-sm"
+                onclick="event.stopPropagation();openEditModal(${u.id})">Edit</button>
+              ${!isSelf
+                ? `<button class="btn btn-sm ${u.is_active ? 'btn-secondary' : 'btn-primary'}"
+                    onclick="event.stopPropagation();toggleUser(${u.id},${!u.is_active})">
+                    ${u.is_active ? 'Deactivate' : 'Activate'}
+                  </button>`
+                : `<span class="text-muted text-xs" style="padding:4px 6px">(You)</span>`}
+            </div>
+          </td>
+        </tr>`;
+      }).join('')
+    : '<tr><td colspan="7" class="empty-state">No users found</td></tr>';
 }
-populateSelect('u_role','/api/v1/users/roles','id','name');
-loadUsers();
+
+// ── Filters ────────────────────────────────────────────────────────────────────
+function filterActive(val, btn) {
+  document.querySelectorAll('.tab-group .tab').forEach(t => t.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  activeFilter = val;
+  renderUsers(allUsers);
+}
+
+function filterUsers() { renderUsers(allUsers); }
+
+// ── User detail panel ──────────────────────────────────────────────────────────
+function showUserDetail(userId) {
+  const u = allUsers.find(x => x.id === userId);
+  if (!u) return;
+  document.getElementById('userDetail').innerHTML = [
+    ['Name',       `<span class="bold">${u.name}</span>`],
+    ['Username',   `<span class="text-gold" style="font-family:monospace">${u.username}</span>`],
+    ['Email',      u.email || '—'],
+    ['Role',       `<span class="badge ${ROLE_COLORS[u.role] || 'badge-gray'}">${u.role || '—'}</span>`],
+    ['Last Login', u.last_login ? fmtDateTime(u.last_login) : 'Never'],
+    ['Status',     `<span class="badge ${u.is_active ? 'badge-green' : 'badge-red'}">${u.is_active ? 'Active' : 'Inactive'}</span>`],
+  ].map(([label, val]) => `
+    <div class="detail-row">
+      <span class="detail-label">${label}</span>
+      <span class="detail-value">${val}</span>
+    </div>`).join('') +
+  `<div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn btn-secondary btn-sm" onclick="openEditModal(${u.id})">✎ Edit</button>
+    ${u.username !== '{{ user.username }}'
+      ? `<button class="btn btn-sm ${u.is_active ? 'btn-secondary' : 'btn-primary'}"
+           onclick="toggleUser(${u.id},${!u.is_active})">
+           ${u.is_active ? 'Deactivate' : 'Activate'}
+         </button>`
+      : ''}
+  </div>`;
+}
+
+// ── Add user ───────────────────────────────────────────────────────────────────
+function openAddModal() {
+  ['u_name','u_email','u_username','u_password'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('u_role').value = '';
+  openModal('addUserModal');
+}
+
+async function submitAddUser() {
+  const name     = document.getElementById('u_name').value.trim();
+  const email    = document.getElementById('u_email').value.trim();
+  const username = document.getElementById('u_username').value.trim();
+  const password = document.getElementById('u_password').value;
+  const role_id  = parseInt(document.getElementById('u_role').value);
+
+  if (!name)                           return showToast('Name required', 'error');
+  if (!email)                          return showToast('Email required', 'error');
+  if (!username)                       return showToast('Username required', 'error');
+  if (!password || password.length < 6) return showToast('Password min 6 characters', 'error');
+  if (!role_id)                        return showToast('Select a role', 'error');
+
+  const btn = document.getElementById('addUserBtn');
+  btn.disabled = true; btn.textContent = 'Creating...';
+  try {
+    await API.post('/api/v1/users/', { name, email, username, password, role_id });
+    showToast(`User "${username}" created`);
+    closeModal('addUserModal');
+    loadUsers();
+  } catch(e) {
+    showToast(e.message || 'Create failed', 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Create User';
+  }
+}
+
+// ── Edit user ──────────────────────────────────────────────────────────────────
+function openEditModal(userId) {
+  const u = allUsers.find(x => x.id === userId);
+  if (!u) return;
+  document.getElementById('e_id').value       = u.id;
+  document.getElementById('e_name').value     = u.name;
+  document.getElementById('e_email').value    = u.email || '';
+  document.getElementById('e_password').value = '';
+  document.getElementById('editModalTitle').textContent = `Edit — ${u.username}`;
+  const role = allRoles.find(r => r.name === u.role);
+  document.getElementById('e_role').value = role ? role.id : '';
+  openModal('editUserModal');
+}
+
+async function submitEditUser() {
+  const id       = parseInt(document.getElementById('e_id').value);
+  const name     = document.getElementById('e_name').value.trim();
+  const email    = document.getElementById('e_email').value.trim();
+  const role_id  = parseInt(document.getElementById('e_role').value) || null;
+  const password = document.getElementById('e_password').value;
+
+  if (!name)                                return showToast('Name required', 'error');
+  if (!email)                               return showToast('Email required', 'error');
+  if (password && password.length < 6)      return showToast('Password min 6 characters', 'error');
+
+  const body = { name, email, role_id };
+  if (password) body.password = password;
+
+  const btn = document.getElementById('editUserBtn');
+  btn.disabled = true; btn.textContent = 'Saving...';
+  try {
+    await API.put(`/api/v1/users/${id}`, body);
+    showToast('User updated successfully');
+    closeModal('editUserModal');
+    loadUsers();
+  } catch(e) {
+    showToast(e.message || 'Update failed', 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Save Changes';
+  }
+}
+
+// ── Toggle active ──────────────────────────────────────────────────────────────
+async function toggleUser(id, makeActive) {
+  const u = allUsers.find(x => x.id === id);
+  if (!confirm(`${makeActive ? 'Activate' : 'Deactivate'} user "${u?.name}"?`)) return;
+  try {
+    await API.put(`/api/v1/users/${id}`, { is_active: makeActive });
+    showToast(`User ${makeActive ? 'activated' : 'deactivated'}`);
+    loadUsers();
+  } catch(e) {
+    showToast(e.message || 'Failed', 'error');
+  }
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────────
+Promise.all([loadUsers(), loadRoles()]);
 </script>
 {% endblock %}

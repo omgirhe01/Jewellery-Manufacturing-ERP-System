@@ -325,7 +325,7 @@ class InventoryItem(Base):
     item_code = Column(String(30), unique=True, nullable=False)
     name = Column(String(100), nullable=False)
     category = Column(
-        Enum("Gold","Silver","Diamond","Gemstone","Consumable","Packaging","WIP","Finished Good"),
+        Enum("Gold","Silver","Stone","Consumable","Other"),
         nullable=False
     )
     unit = Column(String(20), nullable=False)

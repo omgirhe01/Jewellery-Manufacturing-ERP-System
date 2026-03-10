@@ -1,0 +1,432 @@
+{% extends "base.html" %}
+{% block title %}Customers{% endblock %}
+{% block page_title %}Customer Management{% endblock %}
+{% block page_subtitle %}B2B BUYERS · CONTACT DETAILS · JOB HISTORY{% endblock %}
+
+{% block content %}
+
+<!-- METRIC STRIP -->
+<div class="metric-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px">
+  <div class="metric-card">
+    <div class="metric-label">Total Customers</div>
+    <div class="metric-value text-gold" id="kTotal">—</div>
+    <div class="metric-sub">Active accounts</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">With GST</div>
+    <div class="metric-value" style="color:var(--blue)" id="kGst">—</div>
+    <div class="metric-sub">GST registered</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">Active Jobs</div>
+    <div class="metric-value text-orange" id="kJobs">—</div>
+    <div class="metric-sub">In production</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">Total Orders</div>
+    <div class="metric-value text-green" id="kOrders">—</div>
+    <div class="metric-sub">All time</div>
+  </div>
+</div>
+
+<!-- TOOLBAR -->
+<div class="toolbar" style="margin-bottom:16px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px">
+  <div class="toolbar-left">
+    <input id="custSearch" class="search-input" placeholder="Search name, phone, GST..." oninput="filterCustomers()">
+  </div>
+  <div class="toolbar-right">
+    <span id="custCount" class="text-muted text-xs"></span>
+    {% if user.role.name in ['Admin', 'Production Manager', 'Accountant'] %}
+    <button class="btn btn-primary btn-sm" onclick="openModal('addCustomerModal')">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-2px;margin-right:4px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add Customer
+    </button>
+    {% endif %}
+  </div>
+</div>
+
+<!-- TWO-COLUMN LAYOUT -->
+<div style="display:grid;grid-template-columns:1fr 380px;gap:14px;align-items:start">
+
+  <!-- LEFT: Customer Table -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">All Customers</span>
+    </div>
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Contact Person</th>
+            <th>Phone</th>
+            <th>GST Number</th>
+            <th>Email</th>
+          </tr>
+        </thead>
+        <tbody id="custBody">
+          <tr><td colspan="5" class="empty-state">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- RIGHT: Detail Panel -->
+  <div>
+    <!-- Empty state -->
+    <div id="custEmpty" class="card" style="padding:48px 20px;text-align:center">
+      <div style="font-size:32px;opacity:.12;margin-bottom:12px">◈</div>
+      <div class="text-xs text-muted" style="letter-spacing:2px">SELECT A CUSTOMER TO VIEW DETAILS</div>
+    </div>
+
+    <!-- Detail panel -->
+    <div id="custDetail" style="display:none">
+      <div class="card" style="margin-bottom:12px">
+        <div class="card-header">
+          <span class="card-title" id="dName">—</span>
+          <div style="display:flex;gap:6px">
+            {% if user.role.name in ['Admin', 'Production Manager'] %}
+            <button class="btn btn-secondary btn-sm" onclick="openEditModal()">Edit</button>
+            {% endif %}
+            {% if user.role.name == 'Admin' %}
+            <button class="btn btn-secondary btn-sm" style="color:var(--red)" onclick="deactivateCustomer()">Deactivate</button>
+            {% endif %}
+          </div>
+        </div>
+        <div class="card-body">
+          <div class="detail-row"><span class="detail-label">Contact Person</span><span class="detail-value" id="dContact">—</span></div>
+          <div class="detail-row"><span class="detail-label">Phone</span><span class="detail-value" id="dPhone">—</span></div>
+          <div class="detail-row"><span class="detail-label">Email</span><span class="detail-value" id="dEmail">—</span></div>
+          <div class="detail-row"><span class="detail-label">GST Number</span><span class="detail-value text-gold" id="dGst">—</span></div>
+          <div class="detail-row"><span class="detail-label">Address</span><span class="detail-value" id="dAddress" style="max-width:200px;text-align:right;word-break:break-word">—</span></div>
+          <div style="border-top:1px solid var(--border);margin:10px 0"></div>
+          <div class="detail-row"><span class="detail-label">Total Orders</span><span class="detail-value text-gold bold" id="dTotalJobs">—</span></div>
+          <div class="detail-row"><span class="detail-label">Active Jobs</span><span class="detail-value text-orange bold" id="dActiveJobs">—</span></div>
+          <div class="detail-row"><span class="detail-label">Total Order Value</span><span class="detail-value text-green bold" id="dOrderValue">—</span></div>
+        </div>
+      </div>
+
+      <!-- Job History -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Job History</span>
+          <span id="dJobCount" class="badge badge-blue">0 jobs</span>
+        </div>
+        <div class="table-wrapper" style="max-height:260px;overflow-y:auto">
+          <table class="data-table">
+            <thead><tr><th>Job Code</th><th>Metal</th><th>Status</th><th>Delivery</th></tr></thead>
+            <tbody id="dJobBody"><tr><td colspan="4" class="empty-state">No jobs</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Add Customer Modal -->
+<div class="modal-overlay hidden" id="addCustomerModal">
+  <div class="modal" style="max-width:500px">
+    <div class="modal-header">
+      <span class="modal-title">Add Customer</span>
+      <button class="modal-close" onclick="closeModal('addCustomerModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="form-label">Company / Customer Name *</label>
+          <input id="ac_name" class="form-control" placeholder="e.g. Sharma Jewellers">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Contact Person</label>
+          <input id="ac_contact" class="form-control" placeholder="e.g. Ramesh Sharma">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Phone</label>
+          <input id="ac_phone" class="form-control" placeholder="e.g. 9876543210">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email</label>
+          <input id="ac_email" class="form-control" type="email" placeholder="email@example.com">
+        </div>
+        <div class="form-group">
+          <label class="form-label">GST Number <span class="text-muted text-xs">(15 chars)</span></label>
+          <input id="ac_gst" class="form-control" placeholder="e.g. 27AABCU9603R1ZX" style="text-transform:uppercase" maxlength="15" oninput="this.value=this.value.toUpperCase()">
+          <div id="gst_add_hint" class="text-xs" style="margin-top:3px;color:#888"></div>
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="form-label">Address</label>
+          <textarea id="ac_address" class="form-control" rows="2" placeholder="Full address..."></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('addCustomerModal')">Cancel</button>
+      <button class="btn btn-primary" id="addCustBtn" onclick="submitAddCustomer()">Add Customer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Customer Modal -->
+<div class="modal-overlay hidden" id="editCustomerModal">
+  <div class="modal" style="max-width:500px">
+    <div class="modal-header">
+      <span class="modal-title">Edit Customer</span>
+      <button class="modal-close" onclick="closeModal('editCustomerModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="form-label">Company / Customer Name *</label>
+          <input id="ec_name" class="form-control">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Contact Person</label>
+          <input id="ec_contact" class="form-control">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Phone</label>
+          <input id="ec_phone" class="form-control">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email</label>
+          <input id="ec_email" class="form-control" type="email">
+        </div>
+        <div class="form-group">
+          <label class="form-label">GST Number</label>
+          <input id="ec_gst" class="form-control" style="text-transform:uppercase">
+        </div>
+        <div class="form-group" style="grid-column:1/-1">
+          <label class="form-label">Address</label>
+          <textarea id="ec_address" class="form-control" rows="2"></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('editCustomerModal')">Cancel</button>
+      <button class="btn btn-primary" id="editCustBtn" onclick="submitEditCustomer()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let allCustomers  = [];
+let selectedCust  = null;
+
+// ── Load all customers ─────────────────────────────────────────────────────────
+async function loadCustomers() {
+  try {
+    allCustomers = await API.get('/api/v1/customers/');
+    renderCustomers(allCustomers);
+    updateKPIs(allCustomers);
+  } catch(e) {
+    document.getElementById('custBody').innerHTML =
+      `<tr><td colspan="5" class="empty-state">Error: ${e.message}</td></tr>`;
+  }
+}
+
+function updateKPIs(list) {
+  document.getElementById('kTotal').textContent  = list.length;
+  document.getElementById('kGst').textContent    = list.filter(c => c.gst_number).length;
+}
+
+async function loadJobStats() {
+  try {
+    const jobs = await API.get('/api/v1/jobs/?per_page=500');
+    const items = jobs.items || [];
+    document.getElementById('kJobs').textContent   = items.filter(j => !['Completed','Dispatched'].includes(j.status)).length;
+    document.getElementById('kOrders').textContent = items.length;
+  } catch(e) {}
+}
+
+// ── Render table ───────────────────────────────────────────────────────────────
+function renderCustomers(list) {
+  document.getElementById('custCount').textContent = `${list.length} customers`;
+  document.getElementById('custBody').innerHTML = list.length
+    ? list.map(c => `
+        <tr onclick="selectCustomer(${c.id})" style="cursor:pointer" id="crow-${c.id}">
+          <td class="bold text-gold">${c.name || '—'}</td>
+          <td>${c.contact_person || '—'}</td>
+          <td style="font-family:monospace">${c.phone || '—'}</td>
+          <td style="font-family:monospace;font-size:11px">${c.gst_number || '—'}</td>
+          <td class="text-muted text-xs">${c.email || '—'}</td>
+        </tr>`).join('')
+    : '<tr><td colspan="5" class="empty-state">No customers found. Add your first customer.</td></tr>';
+}
+
+// ── Filter ─────────────────────────────────────────────────────────────────────
+function filterCustomers() {
+  const q = document.getElementById('custSearch').value.toLowerCase();
+  const filtered = q
+    ? allCustomers.filter(c =>
+        (c.name||'').toLowerCase().includes(q) ||
+        (c.phone||'').includes(q) ||
+        (c.gst_number||'').toLowerCase().includes(q) ||
+        (c.contact_person||'').toLowerCase().includes(q) ||
+        (c.email||'').toLowerCase().includes(q)
+      )
+    : allCustomers;
+  renderCustomers(filtered);
+}
+
+// ── Select customer ────────────────────────────────────────────────────────────
+async function selectCustomer(id) {
+  // Highlight row
+  document.querySelectorAll('#custBody tr').forEach(r => r.classList.remove('active'));
+  const row = document.getElementById(`crow-${id}`);
+  if (row) row.classList.add('active');
+
+  try {
+    const c = await API.get(`/api/v1/customers/${id}`);
+    selectedCust = c;
+
+    document.getElementById('custEmpty').style.display  = 'none';
+    document.getElementById('custDetail').style.display = 'block';
+
+    document.getElementById('dName').textContent    = c.name || '—';
+    document.getElementById('dContact').textContent = c.contact_person || '—';
+    document.getElementById('dPhone').textContent   = c.phone || '—';
+    document.getElementById('dEmail').textContent   = c.email || '—';
+    document.getElementById('dGst').textContent     = c.gst_number || '—';
+    document.getElementById('dAddress').textContent = c.address || '—';
+    document.getElementById('dTotalJobs').textContent  = c.total_jobs ?? '—';
+    document.getElementById('dActiveJobs').textContent = c.active_jobs ?? '—';
+    document.getElementById('dOrderValue').textContent =
+      c.total_order_value ? '₹' + c.total_order_value.toLocaleString('en-IN', {maximumFractionDigits:0}) : '₹0';
+
+    loadCustomerJobs(id);
+  } catch(e) {
+    showToast(e.message, 'error');
+  }
+}
+
+async function loadCustomerJobs(customerId) {
+  try {
+    const res = await API.get(`/api/v1/jobs/?customer_id=${customerId}&per_page=50`);
+    const jobs = res.items || [];
+    document.getElementById('dJobCount').textContent = `${jobs.length} jobs`;
+    document.getElementById('dJobBody').innerHTML = jobs.length
+      ? jobs.map(j => `<tr>
+          <td class="text-gold bold" style="font-family:monospace">${j.job_code}</td>
+          <td>${metalBadge(j.metal_type)}</td>
+          <td>${statusBadge(j.status)}</td>
+          <td class="text-muted text-xs">${j.expected_delivery || '—'}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="4" class="empty-state">No jobs yet</td></tr>';
+  } catch(e) {
+    document.getElementById('dJobBody').innerHTML = '<tr><td colspan="4" class="empty-state">—</td></tr>';
+  }
+}
+
+// ── Add Customer ───────────────────────────────────────────────────────────────
+function validateGST(gst) {
+  if (!gst) return true; // optional
+  const pattern = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+  return pattern.test(gst.toUpperCase());
+}
+
+async function submitAddCustomer() {
+  const name  = document.getElementById('ac_name').value.trim();
+  const phone = document.getElementById('ac_phone').value.trim();
+  const gst   = document.getElementById('ac_gst').value.trim().toUpperCase();
+
+  if (!name) return showToast('Customer name required', 'error');
+  if (phone && !/^[6-9]\d{9}$/.test(phone))
+    return showToast('Invalid phone number (10 digits, starts with 6-9)', 'error');
+  if (gst && !validateGST(gst))
+    return showToast('Invalid GST number — must be 15 characters (e.g. 27AABCU9603R1ZX)', 'error');
+
+  const btn = document.getElementById('addCustBtn');
+  btn.disabled = true; btn.textContent = 'Adding...';
+
+  try {
+    await API.post('/api/v1/customers/', {
+      name,
+      contact_person: document.getElementById('ac_contact').value.trim() || null,
+      phone:          phone || null,
+      email:          document.getElementById('ac_email').value.trim()   || null,
+      gst_number:     gst || null,
+      address:        document.getElementById('ac_address').value.trim() || null,
+    });
+    showToast(`Customer "${name}" added`);
+    closeModal('addCustomerModal');
+    ['ac_name','ac_contact','ac_phone','ac_email','ac_gst','ac_address']
+      .forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });
+    await loadCustomers();
+  } catch(e) {
+    showToast(e.message || 'Failed to add', 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Add Customer';
+  }
+}
+
+// ── Edit Customer ──────────────────────────────────────────────────────────────
+function openEditModal() {
+  if (!selectedCust) return;
+  document.getElementById('ec_name').value    = selectedCust.name || '';
+  document.getElementById('ec_contact').value = selectedCust.contact_person || '';
+  document.getElementById('ec_phone').value   = selectedCust.phone || '';
+  document.getElementById('ec_email').value   = selectedCust.email || '';
+  document.getElementById('ec_gst').value     = selectedCust.gst_number || '';
+  document.getElementById('ec_address').value = selectedCust.address || '';
+  openModal('editCustomerModal');
+}
+
+async function submitEditCustomer() {
+  if (!selectedCust) return;
+  const name  = document.getElementById('ec_name').value.trim();
+  const phone = document.getElementById('ec_phone').value.trim();
+  const gst   = document.getElementById('ec_gst').value.trim().toUpperCase();
+
+  if (!name) return showToast('Customer name required', 'error');
+  if (phone && !/^[6-9]\d{9}$/.test(phone))
+    return showToast('Invalid phone number (10 digits, starts with 6-9)', 'error');
+  if (gst && !validateGST(gst))
+    return showToast('Invalid GST number — must be 15 characters (e.g. 27AABCU9603R1ZX)', 'error');
+
+  const btn = document.getElementById('editCustBtn');
+  btn.disabled = true; btn.textContent = 'Saving...';
+
+  try {
+    await API.put(`/api/v1/customers/${selectedCust.id}`, {
+      name,
+      contact_person: document.getElementById('ec_contact').value.trim() || null,
+      phone:          phone || null,
+      email:          document.getElementById('ec_email').value.trim()   || null,
+      gst_number:     gst || null,
+      address:        document.getElementById('ec_address').value.trim() || null,
+    });
+    showToast('Customer updated');
+    closeModal('editCustomerModal');
+    await loadCustomers();
+    await selectCustomer(selectedCust.id);
+  } catch(e) {
+    showToast(e.message || 'Failed to update', 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Save Changes';
+  }
+}
+
+// ── Deactivate ─────────────────────────────────────────────────────────────────
+async function deactivateCustomer() {
+  if (!selectedCust) return;
+  if (!confirm(`"${selectedCust.name}" ko deactivate karein?\nIske baad new jobs mein nahi dikhega.`)) return;
+  try {
+    await API.delete(`/api/v1/customers/${selectedCust.id}`);
+    showToast(`"${selectedCust.name}" deactivated`);
+    selectedCust = null;
+    document.getElementById('custEmpty').style.display  = 'block';
+    document.getElementById('custDetail').style.display = 'none';
+    await loadCustomers();
+  } catch(e) {
+    showToast(e.message || 'Failed', 'error');
+  }
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────────
+loadCustomers();
+loadJobStats();
+</script>
+{% endblock %}

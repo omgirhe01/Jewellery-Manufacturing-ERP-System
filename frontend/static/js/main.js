@@ -14,8 +14,32 @@ const API = {
       credentials: 'include',
     };
     if (body) opts.body = JSON.stringify(body);
-    const res = await fetch(path, opts);
-    if (res.status === 401) { window.location.href = '/login'; return; }
+
+    // Timeout: 15 seconds — prevents infinite "Loading..."
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
+    opts.signal = controller.signal;
+
+    let res;
+    try {
+      res = await fetch(path, opts);
+    } catch(fetchErr) {
+      clearTimeout(timer);
+      if (fetchErr.name === 'AbortError') {
+        throw new Error('Request timed out — server not responding. Check if backend is running.');
+      }
+      throw new Error('Network error: ' + fetchErr.message);
+    }
+    clearTimeout(timer);
+
+    if (res.status === 401) {
+      window.location.href = '/login';
+      throw new Error('Session expired — redirecting to login');
+    }
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      throw new Error(`Server error (${res.status}) — check backend logs`);
+    }
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'Request failed');
     return data;
@@ -130,7 +154,7 @@ function fmtDateTime(iso) {
 // ============================================================
 // NUMBER FORMATTING
 // ============================================================
-function fmtWt(val) { return val != null ? parseFloat(val).toFixed(3) + 'g' : '—'; }
+function fmtWt(val) { return val != null ? parseFloat(val).toFixed(4) + 'g' : '—'; }
 function fmtCur(val) { return '₹' + parseFloat(val || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }); }
 function fmtPct(val) { return parseFloat(val || 0).toFixed(2) + '%'; }
 

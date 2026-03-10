@@ -23,7 +23,7 @@ class KarigarCreate(BaseModel):
 class AssignmentCreate(BaseModel):
     karigar_id: int
     job_id: int
-    job_stage_id: Optional[int] = None
+    stage_log_id: Optional[int] = None
     pieces_assigned: int = 1
     metal_issued: float = 0.0
 
@@ -64,7 +64,7 @@ def assign_work(data: AssignmentCreate, db: Session = Depends(get_db),
         raise HTTPException(status_code=404, detail="Karigar not found")
     labour_cost = float(k.piece_rate) * data.pieces_assigned
     assignment = KarigarAssignment(karigar_id=data.karigar_id, job_id=data.job_id,
-                                    job_stage_id=data.job_stage_id,
+                                    stage_log_id=data.stage_log_id,
                                     pieces_assigned=data.pieces_assigned,
                                     metal_issued=data.metal_issued, labour_cost=labour_cost)
     db.add(assignment)

@@ -1,104 +1,887 @@
 {% extends "base.html" %}
-{% block title %}Karigar{% endblock %}
-{% block page_title %}Karigar Management{% endblock %}
-{% block page_subtitle %}ARTISAN TRACKING & WAGES{% endblock %}
+{% block title %}Artisans{% endblock %}
+{% block page_title %}Artisan Management{% endblock %}
+{% block page_subtitle %}KARIGAR · WAGES · ASSIGNMENTS · PERFORMANCE{% endblock %}
+
 {% block content %}
-<div class="toolbar" style="margin-bottom:16px;background:#13110e;border:1px solid #2a2318;border-radius:8px">
-  <div class="toolbar-left"><span class="card-title">Artisan Register</span></div>
+
+<!-- METRIC STRIP -->
+<div class="metric-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:20px">
+  <div class="metric-card">
+    <div class="metric-label">Total Artisans</div>
+    <div class="metric-value text-gold" id="mTotal">—</div>
+    <div class="metric-sub">Registered</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">Currently Working</div>
+    <div class="metric-value text-green" id="mActive">—</div>
+    <div class="metric-sub">With pending jobs</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">Open Assignments</div>
+    <div class="metric-value" style="color:var(--blue)" id="mAssign">—</div>
+    <div class="metric-sub">In progress</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">Pieces Completed</div>
+    <div class="metric-value text-orange" id="mPieces">—</div>
+    <div class="metric-sub">All time</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">Wages Payable</div>
+    <div class="metric-value text-gold" id="mWages">—</div>
+    <div class="metric-sub">Unpaid balance</div>
+  </div>
+</div>
+
+<!-- TOOLBAR -->
+<div class="toolbar" style="margin-bottom:16px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px">
+  <div class="toolbar-left">
+    <div class="tab-group">
+      <button class="tab active" onclick="switchTab('list',this)">Artisan List</button>
+      <button class="tab" onclick="switchTab('assignments',this)">Assignments</button>
+      <button class="tab" onclick="switchTab('wages',this)">Wage Report</button>
+      <button class="tab" onclick="switchTab('performance',this)">Performance</button>
+    </div>
+  </div>
   <div class="toolbar-right">
-    <button class="btn btn-secondary btn-sm" onclick="loadWageReport()">Wage Report</button>
-    <button class="btn btn-primary" onclick="openModal('newKarigarModal')">+ Add Karigar</button>
+    <input class="search-input" id="karigarSearch" placeholder="Search artisan..." oninput="filterKarigars()">
+    {% if user.role.name in ['Admin', 'Production Manager'] %}
+    <button class="btn btn-secondary btn-sm" onclick="openAssignModal()">+ Assign Job</button>
+    <button class="btn btn-primary" onclick="openModal('addKarigarModal')">+ Add Artisan</button>
+    {% endif %}
   </div>
 </div>
 
-<div style="display:grid;grid-template-columns:1fr 300px;gap:14px">
-  <div class="card">
-    <div class="card-header"><span class="card-title">Karigar List</span></div>
-    <table class="data-table">
-      <thead><tr><th>Code</th><th>Name</th><th>Skill</th><th>Piece Rate</th><th>Pending Jobs</th><th>Action</th></tr></thead>
-      <tbody id="karigarBody"><tr><td colspan="6" class="empty-state">Loading...</td></tr></tbody>
-    </table>
-  </div>
-  <div class="card">
-    <div class="card-header"><span class="card-title">Wage Report</span></div>
-    <div class="card-body" id="wageReportBody"><div class="empty-state">Click "Wage Report" to load</div></div>
+<!-- ── TAB: ARTISAN LIST ── -->
+<div id="tab_list">
+  <div style="display:grid;grid-template-columns:1fr 280px;gap:14px">
+
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Artisan Register</span>
+        <span class="text-xs text-muted" id="karigarCount"></span>
+      </div>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Code</th>
+            <th>Name</th>
+            <th>Skill</th>
+            <th>Piece Rate</th>
+            <th>Exp.</th>
+            <th>Pending Jobs</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="karigarBody">
+          <tr><td colspan="7" class="empty-state">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><span class="card-title">Quick Stats</span></div>
+      <div class="card-body" id="quickStats">
+        <div class="empty-state text-xs">Loading...</div>
+      </div>
+    </div>
+
   </div>
 </div>
 
-<!-- New Karigar Modal -->
-<div class="modal-overlay hidden" id="newKarigarModal">
+<!-- ── TAB: ASSIGNMENTS ── -->
+<div id="tab_assignments" class="hidden">
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Job Assignments</span>
+      <div style="display:flex;gap:8px">
+        <select id="filterKarigar" class="form-control" style="width:200px;padding:6px 10px;font-size:11px" onchange="loadAssignments()">
+          <option value="">— All Artisans —</option>
+        </select>
+        <select id="filterStatus" class="form-control" style="width:140px;padding:6px 10px;font-size:11px" onchange="loadAssignments()">
+          <option value="">— All Status —</option>
+          <option>Assigned</option>
+          <option>In Progress</option>
+          <option>Completed</option>
+          <option>Partial</option>
+        </select>
+      </div>
+    </div>
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Artisan</th>
+            <th>Job</th>
+            <th>Assigned Pcs</th>
+            <th>Done Pcs</th>
+            <th>Metal (g)</th>
+            <th>Labour (₹)</th>
+            <th>Status</th>
+            <th>Assigned On</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="assignBody">
+          <tr><td colspan="10" class="empty-state">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ── TAB: WAGE REPORT ── -->
+<div id="tab_wages" class="hidden">
+  <div class="metric-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:14px">
+    <div class="metric-card"><div class="metric-label">Total Artisans</div><div class="metric-value" style="color:var(--blue)" id="wArtisans">—</div></div>
+    <div class="metric-card"><div class="metric-label">Pieces Completed</div><div class="metric-value text-green" id="wCompleted">—</div></div>
+    <div class="metric-card"><div class="metric-label">Pieces Pending</div><div class="metric-value text-orange" id="wPending">—</div></div>
+    <div class="metric-card"><div class="metric-label">Total Wages Payable</div><div class="metric-value text-gold" id="wWages">—</div></div>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Wage Report — All Artisans</span>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-secondary btn-sm" onclick="loadWageReport()">↻ Refresh</button>
+        <button class="btn btn-primary btn-sm" id="pdfBtn" onclick="downloadWagePDF()">⬇ Download PDF</button>
+      </div>
+    </div>
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Code</th>
+            <th>Artisan</th>
+            <th>Skill</th>
+            <th>Rate / Pc</th>
+            <th>Completed</th>
+            <th>Pending</th>
+            <th>Efficiency</th>
+            <th>Total Wages</th>
+          </tr>
+        </thead>
+        <tbody id="wageBody">
+          <tr><td colspan="9" class="empty-state">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ── TAB: PERFORMANCE ── -->
+<div id="tab_performance" class="hidden">
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:14px" id="perfCards"></div>
+  <div style="display:grid;grid-template-columns:2fr 1fr;gap:14px">
+    <div class="card">
+      <div class="card-header"><span class="card-title">Artisan Productivity</span></div>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Artisan</th>
+            <th>Skill</th>
+            <th>Completion Rate</th>
+            <th>Done</th>
+            <th>Pending</th>
+            <th>Wages</th>
+            <th>Rating</th>
+          </tr>
+        </thead>
+        <tbody id="perfBody">
+          <tr><td colspan="7" class="empty-state">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Skill Distribution</span></div>
+      <div class="card-body" id="skillPanel"><div class="empty-state text-xs">Loading...</div></div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ════════════════ MODALS ════════════════ -->
+
+<!-- ADD ARTISAN -->
+<div class="modal-overlay hidden" id="addKarigarModal">
   <div class="modal">
-    <div class="modal-header"><span class="modal-title">Add Karigar</span><button class="modal-close" onclick="closeModal('newKarigarModal')">×</button></div>
+    <div class="modal-header">
+      <span class="modal-title">Add New Artisan</span>
+      <button class="modal-close" onclick="closeModal('addKarigarModal')">×</button>
+    </div>
     <div class="modal-body">
       <div class="form-row">
-        <div class="form-group"><label class="form-label">Name *</label><input id="k_name" class="form-control"></div>
-        <div class="form-group"><label class="form-label">Phone</label><input id="k_phone" class="form-control"></div>
+        <div class="form-group">
+          <label class="form-label">Full Name *</label>
+          <input id="a_name" class="form-control" placeholder="Artisan's full name">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Phone</label>
+          <input id="a_phone" class="form-control" placeholder="Mobile number">
+        </div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label class="form-label">Skill Type</label><input id="k_skill" class="form-control" placeholder="e.g. Stone Setting"></div>
-        <div class="form-group"><label class="form-label">Piece Rate (₹)</label><input id="k_rate" type="number" step="0.01" class="form-control" value="0"></div>
+        <div class="form-group">
+          <label class="form-label">Skill Type</label>
+          <select id="a_skill" class="form-control">
+            <option value="">— Select skill —</option>
+            <option>Stone Setting</option>
+            <option>Filing</option>
+            <option>Casting</option>
+            <option>Polishing</option>
+            <option>Wax Carving</option>
+            <option>Quality Check</option>
+            <option>Engraving</option>
+            <option>Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Experience (Years)</label>
+          <input id="a_exp" type="number" min="0" class="form-control" value="0">
+        </div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label class="form-label">Joined Date</label><input id="k_joined" type="date" class="form-control"></div>
-        <div class="form-group"><label class="form-label">Address</label><input id="k_address" class="form-control"></div>
+        <div class="form-group">
+          <label class="form-label">Piece Rate (₹ / piece)</label>
+          <input id="a_rate" type="number" step="0.01" class="form-control" placeholder="0.00">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Joining Date</label>
+          <input id="a_joined" type="date" class="form-control">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Address</label>
+        <input id="a_address" class="form-control" placeholder="Optional">
       </div>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-secondary" onclick="closeModal('newKarigarModal')">Cancel</button>
-      <button class="btn btn-primary" onclick="submitKarigar()">Add Karigar</button>
+      <button class="btn btn-secondary" onclick="closeModal('addKarigarModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAddKarigar()">+ Add Artisan</button>
     </div>
   </div>
 </div>
 
-<!-- Assign Modal -->
+<!-- EDIT ARTISAN -->
+<div class="modal-overlay hidden" id="editKarigarModal">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Edit Artisan</span>
+      <button class="modal-close" onclick="closeModal('editKarigarModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="e_id">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Full Name *</label>
+          <input id="e_name" class="form-control">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Phone</label>
+          <input id="e_phone" class="form-control">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Skill Type</label>
+          <select id="e_skill" class="form-control">
+            <option value="">— Select —</option>
+            <option>Stone Setting</option>
+            <option>Filing</option>
+            <option>Casting</option>
+            <option>Polishing</option>
+            <option>Wax Carving</option>
+            <option>Quality Check</option>
+            <option>Engraving</option>
+            <option>Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Experience (Years)</label>
+          <input id="e_exp" type="number" min="0" class="form-control">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Piece Rate (₹ / piece)</label>
+          <input id="e_rate" type="number" step="0.01" class="form-control">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Address</label>
+          <input id="e_address" class="form-control">
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('editKarigarModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitEditKarigar()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- ASSIGN JOB -->
 <div class="modal-overlay hidden" id="assignModal">
   <div class="modal">
-    <div class="modal-header"><span class="modal-title">Assign Job to Karigar</span><button class="modal-close" onclick="closeModal('assignModal')">×</button></div>
+    <div class="modal-header">
+      <span class="modal-title">Assign Job to Artisan</span>
+      <button class="modal-close" onclick="closeModal('assignModal')">×</button>
+    </div>
     <div class="modal-body">
-      <div class="form-group"><label class="form-label">Karigar</label><select id="a_karigar" class="form-control"></select></div>
       <div class="form-row">
-        <div class="form-group"><label class="form-label">Job</label><select id="a_job" class="form-control"></select></div>
-        <div class="form-group"><label class="form-label">Pieces</label><input id="a_pieces" type="number" class="form-control" value="1"></div>
+        <div class="form-group">
+          <label class="form-label">Artisan *</label>
+          <select id="as_karigar" class="form-control" onchange="updateLabourEst()">
+            <option value="">— Select Artisan —</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Job *</label>
+          <select id="as_job" class="form-control">
+            <option value="">— Select Job —</option>
+          </select>
+        </div>
       </div>
-      <div class="form-group"><label class="form-label">Metal Issued (g)</label><input id="a_metal" type="number" step="0.001" class="form-control" value="0"></div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Pieces to Assign</label>
+          <input id="as_pieces" type="number" min="1" class="form-control" value="1" oninput="updateLabourEst()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Metal to Issue (g)</label>
+          <input id="as_metal" type="number" step="0.001" class="form-control" value="0">
+        </div>
+      </div>
+      <div style="background:#0e1520;border:1px solid #1a2a3a;border-radius:5px;padding:10px;font-size:11px">
+        <span class="text-muted">Estimated labour cost: </span>
+        <span style="color:var(--blue);font-weight:600" id="labourEst">₹0.00</span>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('assignModal')">Cancel</button>
-      <button class="btn btn-primary" onclick="submitAssign()">Assign</button>
+      <button class="btn btn-primary" onclick="submitAssign()">Assign Job</button>
     </div>
   </div>
 </div>
+
+<!-- COMPLETE ASSIGNMENT -->
+<div class="modal-overlay hidden" id="completeModal">
+  <div class="modal" style="width:420px">
+    <div class="modal-header">
+      <span class="modal-title" style="color:#6dbf8b">✓ Complete Assignment</span>
+      <button class="modal-close" onclick="closeModal('completeModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="background:#0e1f14;border:1px solid #2a4a30;border-radius:6px;padding:12px;margin-bottom:16px">
+        <div class="text-xs text-muted">Assignment #<span id="c_id">—</span></div>
+        <div style="font-size:15px;font-weight:600;color:var(--gold-light);margin:4px 0" id="c_artisan">—</div>
+        <div class="text-xs text-muted" id="c_job">—</div>
+        <div class="text-xs" style="margin-top:8px">Pieces assigned: <span class="text-gold bold" id="c_assigned">—</span></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Pieces Completed *</label>
+          <input id="c_pieces" type="number" min="0" class="form-control" placeholder="0">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Metal Returned (g)</label>
+          <input id="c_metal" type="number" step="0.001" class="form-control" value="0">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes (optional)</label>
+        <textarea id="c_notes" class="form-control" rows="2" placeholder="Any remarks..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('completeModal')">Cancel</button>
+      <button class="btn btn-primary" style="background:#1a5c30;border-color:#1a5c30" onclick="submitComplete()">✓ Mark Complete</button>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
+
 {% block extra_js %}
 <script>
+// ── State ──────────────────────────────────────────────────────────────────────
+let allKarigars       = [];
+let currentCompleteId = null;
+
+// ── Tab switch ─────────────────────────────────────────────────────────────────
+function switchTab(tab, btn) {
+  document.querySelectorAll('.tab-group .tab').forEach(t => t.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  ['list','assignments','wages','performance'].forEach(t =>
+    document.getElementById('tab_' + t).classList.toggle('hidden', t !== tab)
+  );
+  // Show search only on list tab
+  document.getElementById('karigarSearch').style.display = tab === 'list' ? '' : 'none';
+
+  if      (tab === 'list')        loadKarigars();
+  else if (tab === 'assignments') loadAssignments();
+  else if (tab === 'wages')       loadWageReport();
+  else if (tab === 'performance') loadPerformance();
+}
+
+// ── Artisan list ───────────────────────────────────────────────────────────────
 async function loadKarigars() {
-  const data = await API.get('/api/v1/karigar/');
-  document.getElementById('karigarBody').innerHTML = data.map(k=>`
-    <tr>
-      <td class="text-gold">${k.code}</td><td class="bold">${k.name}</td>
-      <td class="text-muted">${k.skill||'—'}</td>
-      <td>${fmtCur(k.piece_rate)}</td>
-      <td><span class="badge ${k.pending_jobs>0?'badge-orange':'badge-gray'}">${k.pending_jobs} jobs</span></td>
-      <td><button class="btn btn-secondary btn-sm" onclick="openAssign(${k.id},'${k.name}')">Assign</button></td>
-    </tr>`).join('');
+  try {
+    const data = await API.get('/api/v1/karigar/');
+    allKarigars = data;
+
+    // Populate assignment filter + assign modal dropdowns
+    const filterOpts = data.map(k =>
+      `<option value="${k.id}">${k.name} (${k.karigar_code})</option>`
+    ).join('');
+    document.getElementById('filterKarigar').innerHTML =
+      '<option value="">— All Artisans —</option>' + filterOpts;
+
+    const asKarigarOpts = data.map(k =>
+      `<option value="${k.id}" data-rate="${k.piece_rate}">${k.name} — ₹${k.piece_rate}/pc</option>`
+    ).join('');
+    document.getElementById('as_karigar').innerHTML =
+      '<option value="">— Select Artisan —</option>' + asKarigarOpts;
+
+    document.getElementById('karigarCount').textContent =
+      `${data.length} artisan${data.length !== 1 ? 's' : ''}`;
+
+    renderKarigars(data);
+    renderQuickStats(data);
+    loadMetrics(data);
+  } catch(e) {
+    showToast('Failed to load artisans', 'error');
+  }
 }
-async function loadWageReport() {
-  const data = await API.get('/api/v1/karigar/report/wages');
-  document.getElementById('wageReportBody').innerHTML = data.map(r=>`
+
+function filterKarigars() {
+  const q = document.getElementById('karigarSearch').value.toLowerCase();
+  const filtered = allKarigars.filter(k =>
+    k.name.toLowerCase().includes(q) ||
+    (k.karigar_code || '').toLowerCase().includes(q) ||
+    (k.skill_type   || '').toLowerCase().includes(q)
+  );
+  document.getElementById('karigarCount').textContent =
+    `${filtered.length} of ${allKarigars.length}`;
+  renderKarigars(filtered);
+}
+
+function renderKarigars(data) {
+  document.getElementById('karigarBody').innerHTML = data.length
+    ? data.map(k => `
+      <tr>
+        <td class="text-gold bold" style="font-family:monospace">${k.karigar_code || '—'}</td>
+        <td class="bold">${k.name}</td>
+        <td class="text-muted">${k.skill_type || '—'}</td>
+        <td>${fmtCur(k.piece_rate)}/pc</td>
+        <td class="text-muted">${k.experience_years ? k.experience_years + 'y' : '—'}</td>
+        <td><span class="badge ${k.pending_jobs > 0 ? 'badge-orange' : 'badge-gray'}">${k.pending_jobs} pending</span></td>
+        <td style="display:flex;gap:6px">
+          <button class="btn btn-secondary btn-sm" onclick="goToAssignments(${k.id})">Assignments</button>
+          <button class="btn btn-secondary btn-sm" onclick="openAssignFor(${k.id})">+ Assign</button>
+          <button class="btn btn-secondary btn-sm" onclick="openEditKarigar(${k.id})">Edit</button>
+        </td>
+      </tr>`)
+      .join('')
+    : '<tr><td colspan="7" class="empty-state">No artisans found</td></tr>';
+}
+
+function renderQuickStats(data) {
+  const skillMap     = {};
+  let totalPending   = 0;
+  data.forEach(k => {
+    const s = k.skill_type || 'Unspecified';
+    skillMap[s] = (skillMap[s] || 0) + 1;
+    totalPending += parseInt(k.pending_jobs || 0);
+  });
+
+  document.getElementById('quickStats').innerHTML = `
     <div class="detail-row">
-      <span class="detail-label">${r.karigar}<br><span class="text-xs text-muted">${r.skill||''}</span></span>
-      <span class="detail-value"><div class="text-gold">${fmtCur(r.total_wages)}</div><div class="text-xs text-muted">${r.pending_pieces} pcs pending</div></span>
-    </div>`).join('');
+      <span class="detail-label">Total Artisans</span>
+      <span class="detail-value text-gold">${data.length}</span>
+    </div>
+    <div class="detail-row">
+      <span class="detail-label">Currently Working</span>
+      <span class="detail-value">${data.filter(k => k.pending_jobs > 0).length}</span>
+    </div>
+    <div class="detail-row">
+      <span class="detail-label">Total Pending Jobs</span>
+      <span class="detail-value text-orange">${totalPending}</span>
+    </div>
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+      <div class="text-xs text-muted" style="text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px">By Skill</div>
+      ${Object.entries(skillMap).sort((a,b) => b[1]-a[1]).map(([s, c]) => `
+        <div style="margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px">
+            <span class="text-muted">${s}</span><span>${c}</span>
+          </div>
+          <div style="height:3px;background:var(--border);border-radius:2px">
+            <div style="height:100%;width:${Math.round(c/data.length*100)}%;background:var(--gold);border-radius:2px"></div>
+          </div>
+        </div>`).join('')}
+    </div>`;
 }
-async function submitKarigar() {
-  const b={name:document.getElementById('k_name').value,phone:document.getElementById('k_phone').value||null,skill_type:document.getElementById('k_skill').value||null,piece_rate:parseFloat(document.getElementById('k_rate').value)||0,joined_date:document.getElementById('k_joined').value||null,address:document.getElementById('k_address').value||null};
-  try{await API.post('/api/v1/karigar/',b);showToast('Karigar added');closeModal('newKarigarModal');loadKarigars();}catch(e){showToast(e.message,'error');}
+
+async function loadMetrics(karigars) {
+  try {
+    const wages      = await API.get('/api/v1/karigar/wage-report').catch(() => []);
+    const active     = karigars.filter(k => k.pending_jobs > 0).length;
+    const pending    = karigars.reduce((a, k) => a + parseInt(k.pending_jobs || 0), 0);
+    const pieces     = wages.reduce((a, r) => a + parseInt(r.completed_pieces || 0), 0);
+    const totalWages = wages.reduce((a, r) => a + parseFloat(r.total_wages || 0), 0);
+
+    document.getElementById('mTotal').textContent  = karigars.length;
+    document.getElementById('mActive').textContent = active;
+    document.getElementById('mAssign').textContent = pending;
+    document.getElementById('mPieces').textContent = pieces.toLocaleString();
+    document.getElementById('mWages').textContent  =
+      totalWages >= 1000 ? '₹' + (totalWages/1000).toFixed(1) + 'K' : fmtCur(totalWages);
+  } catch(e) { /* silent */ }
 }
-function openAssign(id, name) { document.getElementById('a_karigar').innerHTML = `<option value="${id}">${name}</option>`; openModal('assignModal'); populateSelect('a_job','/api/v1/jobs/?per_page=100','id','job_code'); }
+
+// ── Assignments tab ────────────────────────────────────────────────────────────
+async function loadAssignments() {
+  const karigarId = document.getElementById('filterKarigar').value;
+  const statusVal = document.getElementById('filterStatus').value;
+  const tbody     = document.getElementById('assignBody');
+  tbody.innerHTML = '<tr><td colspan="10" class="empty-state">Loading...</td></tr>';
+
+  try {
+    let list = [];
+    if (karigarId) {
+      const raw = await API.get(`/api/v1/karigar/assignments/${karigarId}`);
+      const k   = allKarigars.find(x => x.id == karigarId);
+      list = raw.map(a => ({ ...a, karigar_name: k?.name || '—', karigar_code: k?.karigar_code || '' }));
+    } else {
+      if (!allKarigars.length) await loadKarigars();
+      const all = await Promise.all(allKarigars.map(k =>
+        API.get(`/api/v1/karigar/assignments/${k.id}`)
+          .then(r => r.map(a => ({ ...a, karigar_name: k.name, karigar_code: k.karigar_code })))
+          .catch(() => [])
+      ));
+      list = all.flat().sort((a, b) => new Date(b.assigned_at || 0) - new Date(a.assigned_at || 0));
+    }
+    if (statusVal) list = list.filter(a => a.status === statusVal);
+
+    const badgeMap = {
+      'Assigned': 'badge-blue', 'In Progress': 'badge-gold',
+      'Completed': 'badge-green', 'Partial': 'badge-orange'
+    };
+
+    tbody.innerHTML = list.length
+      ? list.map(a => `
+        <tr>
+          <td class="text-muted text-sm">#${a.id}</td>
+          <td>
+            <span class="bold">${a.karigar_name}</span>
+            <div class="text-xs text-muted" style="font-family:monospace">${a.karigar_code}</div>
+          </td>
+          <td class="text-gold bold" style="font-family:monospace">Job #${a.job_id}</td>
+          <td style="text-align:center">${a.pieces_assigned}</td>
+          <td style="text-align:center;color:var(--green);font-weight:600">${a.pieces_completed || 0}</td>
+          <td class="text-muted">${parseFloat(a.metal_issued || 0).toFixed(3)}</td>
+          <td class="text-gold">${fmtCur(a.labour_cost)}</td>
+          <td><span class="badge ${badgeMap[a.status] || 'badge-gray'}">${a.status}</span></td>
+          <td class="text-muted text-sm">${a.assigned_at ? fmtDate(a.assigned_at) : '—'}</td>
+          <td>
+            ${a.status !== 'Completed'
+              ? `<button class="btn btn-secondary btn-sm" onclick="openComplete(${a.id},'${a.karigar_name.replace(/'/g,"\\'")}',${a.job_id},${a.pieces_assigned})">✓ Done</button>`
+              : '<span class="text-xs text-muted">Done</span>'}
+          </td>
+        </tr>`)
+        .join('')
+      : '<tr><td colspan="10" class="empty-state">No assignments found</td></tr>';
+  } catch(e) {
+    showToast('Failed to load assignments', 'error');
+  }
+}
+
+function goToAssignments(karigarId) {
+  document.getElementById('filterKarigar').value = karigarId;
+  switchTab('assignments', document.querySelectorAll('.tab-group .tab')[1]);
+}
+
+// ── Wage report tab ────────────────────────────────────────────────────────────
+async function loadWageReport() {
+  try {
+    const data       = await API.get('/api/v1/karigar/wage-report');
+    const totalWages = data.reduce((a, r) => a + parseFloat(r.total_wages || 0), 0);
+    const totalDone  = data.reduce((a, r) => a + parseInt(r.completed_pieces || 0), 0);
+    const totalPend  = data.reduce((a, r) => a + parseInt(r.pending_pieces || 0), 0);
+
+    document.getElementById('wArtisans').textContent  = data.length;
+    document.getElementById('wCompleted').textContent = totalDone.toLocaleString();
+    document.getElementById('wPending').textContent   = totalPend.toLocaleString();
+    document.getElementById('wWages').textContent     = fmtCur(totalWages);
+
+    const sorted = [...data].sort((a, b) => parseFloat(b.total_wages || 0) - parseFloat(a.total_wages || 0));
+
+    document.getElementById('wageBody').innerHTML = sorted.length
+      ? sorted.map((r, i) => {
+          const tot = parseInt(r.completed_pieces || 0) + parseInt(r.pending_pieces || 0);
+          const eff = tot > 0 ? Math.round(parseInt(r.completed_pieces || 0) / tot * 100) : 0;
+          const col = eff >= 80 ? 'var(--green)' : eff >= 50 ? 'var(--gold)' : 'var(--orange)';
+          return `<tr>
+            <td class="text-muted">${i+1}</td>
+            <td><span class="badge badge-gray" style="font-family:monospace">${r.karigar_code || '—'}</span></td>
+            <td class="bold">${r.name}</td>
+            <td class="text-muted">${r.skill || '—'}</td>
+            <td>${fmtCur(r.piece_rate)}</td>
+            <td style="color:var(--green);font-weight:600">${r.completed_pieces || 0}</td>
+            <td><span class="badge badge-orange">${r.pending_pieces || 0}</span></td>
+            <td>
+              <div style="display:flex;align-items:center;gap:8px">
+                <div style="width:60px;height:4px;background:var(--border);border-radius:2px">
+                  <div style="width:${eff}%;height:100%;background:${col};border-radius:2px"></div>
+                </div>
+                <span style="color:${col};font-weight:700;font-size:11px">${eff}%</span>
+              </div>
+            </td>
+            <td class="text-gold bold">${fmtCur(r.total_wages)}</td>
+          </tr>`;
+        }).join('') +
+        `<tr style="background:#1a1500;border-top:1px solid var(--gold-dim)">
+          <td colspan="8" style="text-align:right;padding-right:16px;font-weight:700;color:var(--gold)">Total Wages Payable</td>
+          <td style="font-size:15px;font-weight:700;color:var(--gold)">${fmtCur(totalWages)}</td>
+        </tr>`
+      : '<tr><td colspan="9" class="empty-state">No wage data</td></tr>';
+  } catch(e) {
+    showToast('Failed to load wage report', 'error');
+  }
+}
+
+async function downloadWagePDF() {
+  const btn = document.getElementById('pdfBtn');
+  btn.disabled = true; btn.textContent = '⏳ Generating...';
+  try {
+    const res = await fetch('/api/v1/karigar/wage-report/pdf', { credentials: 'include' });
+    if (!res.ok) throw new Error((await res.json()).detail || 'Failed');
+    const blob = await res.blob();
+    const a    = document.createElement('a');
+    a.href     = URL.createObjectURL(blob);
+    a.download = `wage_report_${new Date().toISOString().slice(0,10)}.pdf`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    showToast('PDF downloaded!');
+  } catch(e) {
+    showToast(e.message || 'Download failed', 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = '⬇ Download PDF';
+  }
+}
+
+// ── Performance tab ────────────────────────────────────────────────────────────
+async function loadPerformance() {
+  try {
+    const data       = await API.get('/api/v1/karigar/wage-report');
+    const totalWages = data.reduce((a, r) => a + parseFloat(r.total_wages || 0), 0);
+    const totalDone  = data.reduce((a, r) => a + parseInt(r.completed_pieces || 0), 0);
+    const totalPend  = data.reduce((a, r) => a + parseInt(r.pending_pieces || 0), 0);
+
+    document.getElementById('perfCards').innerHTML = `
+      <div class="card" style="padding:18px">
+        <div class="metric-label">Total Wages</div>
+        <div class="" style="font-size:26px;font-weight:700;color:var(--gold)">${fmtCur(totalWages)}</div>
+      </div>
+      <div class="card" style="padding:18px">
+        <div class="metric-label">Pieces Completed</div>
+        <div class="" style="font-size:26px;font-weight:700;color:var(--green)">${totalDone.toLocaleString()}</div>
+        <div class="metric-sub">${totalPend} pending</div>
+      </div>
+      <div class="card" style="padding:18px">
+        <div class="metric-label">Active / Total</div>
+        <div class="" style="font-size:26px;font-weight:700;color:var(--gold-light)">
+          ${data.filter(r => (r.completed_pieces||0) > 0 || (r.pending_pieces||0) > 0).length}
+          <span style="font-size:18px;color:var(--text-muted)"> / ${data.length}</span>
+        </div>
+      </div>`;
+
+    // Skill distribution
+    const skillMap = allKarigars.reduce((a, k) => {
+      const s = k.skill_type || 'Unspecified';
+      a[s] = (a[s] || 0) + 1;
+      return a;
+    }, {});
+    const total = allKarigars.length || 1;
+    document.getElementById('skillPanel').innerHTML = Object.entries(skillMap)
+      .sort((a, b) => b[1] - a[1])
+      .map(([skill, count]) => {
+        const pct = Math.round(count / total * 100);
+        return `<div style="margin-bottom:14px">
+          <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:5px">
+            <span>${skill}</span>
+            <span class="text-muted">${count} · ${pct}%</span>
+          </div>
+          <div style="height:3px;background:var(--border);border-radius:2px">
+            <div style="height:100%;width:${pct}%;background:var(--gold);border-radius:2px"></div>
+          </div>
+        </div>`;
+      }).join('') || '<div class="text-muted text-xs">No skill data</div>';
+
+    // Productivity table
+    const sorted = [...data].sort((a, b) => parseFloat(b.total_wages||0) - parseFloat(a.total_wages||0));
+    document.getElementById('perfBody').innerHTML = sorted.length
+      ? sorted.map(r => {
+          const tot   = parseInt(r.completed_pieces||0) + parseInt(r.pending_pieces||0);
+          const pct   = tot > 0 ? Math.round(parseInt(r.completed_pieces||0) / tot * 100) : 0;
+          const col   = pct >= 80 ? 'var(--green)' : pct >= 50 ? 'var(--gold)' : 'var(--orange)';
+          const label = pct >= 80 ? '🏆 Excellent' : pct >= 60 ? '✓ Good' : pct >= 40 ? '⚠ Average' : '⚡ Low';
+          return `<tr>
+            <td class="bold">${r.name}</td>
+            <td class="text-muted">${r.skill || '—'}</td>
+            <td>
+              <div style="display:flex;align-items:center;gap:8px">
+                <div style="flex:1;height:4px;background:var(--border);border-radius:2px">
+                  <div style="width:${pct}%;height:100%;background:${col};border-radius:2px"></div>
+                </div>
+                <span style="color:${col};font-weight:700;font-size:12px;min-width:32px">${pct}%</span>
+              </div>
+            </td>
+            <td style="color:var(--green)">${r.completed_pieces || 0}</td>
+            <td><span class="badge badge-orange">${r.pending_pieces || 0}</span></td>
+            <td class="text-gold">${fmtCur(r.total_wages)}</td>
+            <td style="color:${col};font-size:11px;font-weight:600">${label}</td>
+          </tr>`;
+        }).join('')
+      : '<tr><td colspan="7" class="empty-state">No performance data</td></tr>';
+  } catch(e) {
+    showToast('Failed to load performance data', 'error');
+  }
+}
+
+// ── Add Artisan ────────────────────────────────────────────────────────────────
+async function submitAddKarigar() {
+  const name = document.getElementById('a_name').value.trim();
+  if (!name) { showToast('Name is required', 'error'); return; }
+  try {
+    await API.post('/api/v1/karigar/', {
+      name,
+      phone:            document.getElementById('a_phone').value   || null,
+      skill_type:       document.getElementById('a_skill').value   || null,
+      experience_years: parseInt(document.getElementById('a_exp').value)   || 0,
+      piece_rate:       parseFloat(document.getElementById('a_rate').value) || 0,
+      joined_date:      document.getElementById('a_joined').value  || null,
+      address:          document.getElementById('a_address').value || null,
+    });
+    showToast('Artisan added successfully!');
+    closeModal('addKarigarModal');
+    ['a_name','a_phone','a_skill','a_exp','a_rate','a_joined','a_address']
+      .forEach(id => { document.getElementById(id).value = ''; });
+    loadKarigars();
+  } catch(e) {
+    showToast(e.message || 'Failed to add artisan', 'error');
+  }
+}
+
+// ── Edit Artisan ───────────────────────────────────────────────────────────────
+function openEditKarigar(id) {
+  const k = allKarigars.find(x => x.id === id);
+  if (!k) return;
+  document.getElementById('e_id').value      = k.id;
+  document.getElementById('e_name').value    = k.name;
+  document.getElementById('e_phone').value   = k.phone || '';
+  document.getElementById('e_skill').value   = k.skill_type || '';
+  document.getElementById('e_exp').value     = k.experience_years || 0;
+  document.getElementById('e_rate').value    = k.piece_rate || 0;
+  document.getElementById('e_address').value = k.address || '';
+  openModal('editKarigarModal');
+}
+
+async function submitEditKarigar() {
+  const id   = document.getElementById('e_id').value;
+  const name = document.getElementById('e_name').value.trim();
+  if (!name) { showToast('Name is required', 'error'); return; }
+  try {
+    await API.put(`/api/v1/karigar/${id}`, {
+      name,
+      phone:            document.getElementById('e_phone').value   || null,
+      skill_type:       document.getElementById('e_skill').value   || null,
+      experience_years: parseInt(document.getElementById('e_exp').value)   || 0,
+      piece_rate:       parseFloat(document.getElementById('e_rate').value) || 0,
+      address:          document.getElementById('e_address').value || null,
+    });
+    showToast('Artisan updated!');
+    closeModal('editKarigarModal');
+    loadKarigars();
+  } catch(e) {
+    showToast(e.message || 'Failed to update', 'error');
+  }
+}
+
+// ── Assign Job ─────────────────────────────────────────────────────────────────
+async function openAssignModal() {
+  await populateSelect('as_job', '/api/v1/jobs/?per_page=100', 'id', 'job_code', '— Select Job —');
+  openModal('assignModal');
+}
+
+async function openAssignFor(karigarId) {
+  await openAssignModal();
+  setTimeout(() => {
+    document.getElementById('as_karigar').value = karigarId;
+    updateLabourEst();
+  }, 100);
+}
+
+function updateLabourEst() {
+  const sel    = document.getElementById('as_karigar');
+  const opt    = sel.options[sel.selectedIndex];
+  const rate   = parseFloat(opt?.dataset?.rate || 0);
+  const pieces = parseInt(document.getElementById('as_pieces').value || 1);
+  document.getElementById('labourEst').textContent = fmtCur(rate * pieces);
+}
+
 async function submitAssign() {
-  const b={karigar_id:parseInt(document.getElementById('a_karigar').value),job_id:parseInt(document.getElementById('a_job').value),pieces_assigned:parseInt(document.getElementById('a_pieces').value),metal_issued:parseFloat(document.getElementById('a_metal').value)||0};
-  try{await API.post('/api/v1/karigar/assign',b);showToast('Job assigned');closeModal('assignModal');}catch(e){showToast(e.message,'error');}
+  const karigarId = parseInt(document.getElementById('as_karigar').value);
+  const jobId     = parseInt(document.getElementById('as_job').value);
+  if (!karigarId || !jobId) { showToast('Select artisan and job', 'error'); return; }
+  try {
+    const res = await API.post('/api/v1/karigar/assign', {
+      karigar_id:      karigarId,
+      job_id:          jobId,
+      pieces_assigned: parseInt(document.getElementById('as_pieces').value) || 1,
+      metal_issued:    parseFloat(document.getElementById('as_metal').value) || 0,
+    });
+    showToast(`Assigned! Labour cost: ${fmtCur(res.labour_cost)}`);
+    closeModal('assignModal');
+    loadKarigars();
+  } catch(e) {
+    showToast(e.message || 'Failed to assign', 'error');
+  }
 }
+
+// ── Complete Assignment ────────────────────────────────────────────────────────
+function openComplete(id, artisanName, jobId, piecesAssigned) {
+  currentCompleteId = id;
+  document.getElementById('c_id').textContent       = id;
+  document.getElementById('c_artisan').textContent  = artisanName;
+  document.getElementById('c_job').textContent      = 'Job #' + jobId;
+  document.getElementById('c_assigned').textContent = piecesAssigned;
+  document.getElementById('c_pieces').value         = piecesAssigned;
+  document.getElementById('c_metal').value          = '0';
+  document.getElementById('c_notes').value          = '';
+  openModal('completeModal');
+}
+
+async function submitComplete() {
+  if (!currentCompleteId) return;
+  const pieces = parseInt(document.getElementById('c_pieces').value);
+  if (!pieces || pieces < 0) { showToast('Enter pieces completed', 'error'); return; }
+  const metal = parseFloat(document.getElementById('c_metal').value) || 0;
+  try {
+    const res = await API.put(
+      `/api/v1/karigar/assignment/${currentCompleteId}/complete?pieces_completed=${pieces}&metal_returned=${metal}`
+    );
+    showToast(`✓ ${res.status} — ${pieces} pcs, ${fmtCur(res.labour_cost)} wages`);
+    closeModal('completeModal');
+    loadAssignments();
+    loadKarigars();
+  } catch(e) {
+    showToast(e.message || 'Failed to complete', 'error');
+  }
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────────
 loadKarigars();
 </script>
 {% endblock %}

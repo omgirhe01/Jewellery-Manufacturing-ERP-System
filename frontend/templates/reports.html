@@ -1,59 +1,666 @@
 {% extends "base.html" %}
 {% block title %}Reports{% endblock %}
-{% block page_title %}Reports{% endblock %}
-{% block page_subtitle %}PRODUCTION ANALYTICS & AUDIT TRAIL{% endblock %}
+{% block page_title %}Reports & Analytics{% endblock %}
+{% block page_subtitle %}PRODUCTION · METAL · FINANCE · AUDIT{% endblock %}
+
 {% block content %}
-<div class="tab-group" style="margin-bottom:16px">
-  <button class="tab active" onclick="showReport('dashboard',this)">Dashboard Summary</button>
-  <button class="tab" onclick="showReport('variance',this)">Weight Variance</button>
-  <button class="tab" onclick="showReport('profitability',this)">Profitability</button>
-  <button class="tab" onclick="showReport('audit',this)">Audit Trail</button>
+
+<!-- TAB BAR -->
+<div class="tab-group" style="margin-bottom:16px;flex-wrap:wrap;gap:6px">
+  <button class="tab active" onclick="showReport('master',this)">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>Master Summary</button>
+  <button class="tab" onclick="showReport('dashboard',this)">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Dashboard</button>
+  <button class="tab" onclick="showReport('jobs',this)">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>Job History</button>
+  <button class="tab" onclick="showReport('variance',this)">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>Weight Variance</button>
+  <button class="tab" onclick="showReport('dept_loss',this)">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg>Dept Loss</button>
+  {% if user.role.name in ['Admin', 'Production Manager', 'Metal Store Manager', 'Accountant'] %}
+  <button class="tab" onclick="showReport('metal',this)">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><circle cx="12" cy="12" r="9"/><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/></svg>Metal Recon</button>
+  {% endif %}
+  {% if user.role.name in ['Admin', 'Production Manager'] %}
+  <button class="tab" onclick="showReport('karigar',this)">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Artisans</button>
+  {% endif %}
+  {% if user.role.name in ['Admin', 'Production Manager', 'Metal Store Manager'] %}
+  <button class="tab" onclick="showReport('scrap',this)">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>Scrap</button>
+  {% endif %}
+  {% if user.role.name in ['Admin', 'Production Manager', 'Metal Store Manager', 'Accountant'] %}
+  <button class="tab" onclick="showReport('refinery',this)">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><path d="M3 3h18v4H3z"/><path d="M3 7l2 14h14l2-14"/><path d="M9 11h6M9 15h6"/></svg>Refinery</button>
+  {% endif %}
+  {% if user.role.name in ['Admin', 'Accountant'] %}
+  <button class="tab" onclick="showReport('cost',this)">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Cost Compare</button>
+  {% endif %}
+  {% if user.role.name == 'Admin' %}
+  <button class="tab" onclick="showReport('audit',this)">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>Audit Trail</button>
+  {% endif %}
 </div>
 
 <div id="reportContent">
-  <div class="card">
-    <div class="card-header"><span class="card-title">Dashboard Summary</span></div>
-    <div class="card-body" id="reportBody"><div class="empty-state">Loading...</div></div>
+  <div class="empty-state" style="padding:60px">
+    <div style="font-size:32px;margin-bottom:10px;opacity:.4">📊</div>
+    <div>Loading...</div>
   </div>
 </div>
+
 {% endblock %}
+
 {% block extra_js %}
 <script>
+let currentReport = 'master';
+
+function n(v, d=0) { const x = parseFloat(v); return isNaN(x) ? d : x; }
+function safe(obj, key, def='—') { return (obj && obj[key] != null) ? obj[key] : def; }
+
+function showError(msg) {
+  document.getElementById('reportContent').innerHTML = `
+    <div class="card"><div class="card-body" style="padding:20px">
+      <div style="color:var(--red);margin-bottom:6px;font-weight:600">⚠ Could not load report</div>
+      <div class="text-muted text-xs">${msg}</div>
+    </div></div>`;
+}
+
 async function showReport(type, btn) {
-  document.querySelectorAll('.tab-group .tab').forEach(t=>t.classList.remove('active'));
-  btn.classList.add('active');
-  document.getElementById('reportBody').innerHTML = '<div class="empty-state">Loading...</div>';
-  if (type==='dashboard') {
-    const d = await API.get('/api/v1/reports/dashboard');
-    document.getElementById('reportBody').innerHTML = `
-      <div class="metric-grid" style="margin-bottom:20px">
-        <div class="metric-card"><div class="metric-label">Total Jobs</div><div class="metric-value text-gold">${d.jobs.total}</div></div>
-        <div class="metric-card"><div class="metric-label">Active</div><div class="metric-value text-green">${d.jobs.active}</div></div>
-        <div class="metric-card"><div class="metric-label">QC Pending</div><div class="metric-value text-orange">${d.jobs.qc_pending}</div></div>
-        <div class="metric-card"><div class="metric-label">Completed</div><div class="metric-value text-green">${d.jobs.completed}</div></div>
-      </div>
-      <h4 style="color:#8a7a5a;font-size:10px;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:12px">Metal Stock</h4>
-      <table class="data-table"><thead><tr><th>Metal</th><th>Type</th><th>Quantity</th></tr></thead>
-      <tbody>${d.metal_stock.map(s=>`<tr><td class="text-gold">${s.type}</td><td class="text-muted">${s.stock_type}</td><td>${parseFloat(s.qty).toFixed(3)}g</td></tr>`).join('')}</tbody></table>`;
-  } else if (type==='variance') {
-    const d = await API.get('/api/v1/reports/weight-variance');
-    document.getElementById('reportBody').innerHTML = d.length ? `
-      <table class="data-table"><thead><tr><th>Job ID</th><th>Stage</th><th>Weight In</th><th>Weight Out</th><th>Variance</th></tr></thead>
-      <tbody>${d.map(r=>`<tr><td class="text-gold">${r.job_id}</td><td>${r.stage}</td><td>${parseFloat(r.weight_in).toFixed(3)}g</td><td>${parseFloat(r.weight_out).toFixed(3)}g</td><td class="${r.variance>0?'text-orange':'text-green'}">${parseFloat(r.variance).toFixed(3)}g</td></tr>`).join('')}</tbody></table>` :
-      '<div class="empty-state">No weight variance data yet</div>';
-  } else if (type==='profitability') {
-    const d = await API.get('/api/v1/costing/report/profitability');
-    document.getElementById('reportBody').innerHTML = d.length ? `
-      <table class="data-table"><thead><tr><th>Job ID</th><th>Total Cost</th><th>Sale Price</th><th>Profit/Loss</th><th>Margin</th></tr></thead>
-      <tbody>${d.map(r=>`<tr><td class="text-gold">${r.job_id}</td><td>${fmtCur(r.total_cost)}</td><td>${fmtCur(r.sale_price)}</td><td class="${r.profit>=0?'text-green':'text-red'}">${fmtCur(r.profit)}</td><td>${fmtPct(r.margin_pct)}</td></tr>`).join('')}</tbody></table>` :
-      '<div class="empty-state">No costing data yet</div>';
-  } else if (type==='audit') {
-    const d = await API.get('/api/v1/reports/audit-trail');
-    document.getElementById('reportBody').innerHTML = `
-      <table class="data-table"><thead><tr><th>User</th><th>Action</th><th>Module</th><th>Record</th><th>Time</th></tr></thead>
-      <tbody>${d.items.map(l=>`<tr><td class="text-muted">#${l.user_id}</td><td>${l.action}</td><td><span class="badge badge-blue">${l.module}</span></td><td class="text-muted">${l.record_id||'—'}</td><td class="text-muted text-sm">${fmtDateTime(l.at)}</td></tr>`).join('')}</tbody></table>`;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  currentReport = type;
+  document.getElementById('reportContent').innerHTML =
+    '<div class="empty-state" style="padding:50px"><div style="font-size:24px;margin-bottom:8px">⏳</div><div>Loading...</div></div>';
+  try {
+    if      (type==='master')    await renderMaster();
+    else if (type==='dashboard') await renderDashboard();
+    else if (type==='jobs')      await renderJobHistory();
+    else if (type==='variance')  await renderVariance();
+    else if (type==='dept_loss') await renderDeptLoss();
+    else if (type==='metal')     await renderMetal();
+    else if (type==='karigar')   await renderKarigar();
+    else if (type==='scrap')     await renderScrap();
+    else if (type==='refinery')  await renderRefinery();
+    else if (type==='cost')      await renderCost();
+    else if (type==='audit')     await renderAudit();
+  } catch(e) {
+    console.error('Report [' + type + ']:', e);
+    showError((e.message||'Unknown error') + ' — Tab: ' + type);
   }
 }
-showReport('dashboard', document.querySelector('.tab'));
+
+// ── MASTER SUMMARY ────────────────────────────────────────────────────────────
+async function renderMaster() {
+  const d      = await API.get('/api/v1/reports/master-summary');
+  const jobs   = d.jobs       || {};
+  const metal  = d.metal      || {};
+  const scrap  = d.scrap      || {};
+  const kar    = d.karigars   || {};
+  const fin    = d.financials || {};
+  const alerts = d.alerts     || {};
+  const stocks = metal.stocks || [];
+
+  const alertCount = (alerts.overdue_jobs||0) + (alerts.low_stock_items||0) + (alerts.pending_refinery_settlements||0);
+
+  document.getElementById('reportContent').innerHTML = `
+    <div class="metric-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:14px">
+      <div class="metric-card">
+        <div class="metric-label">Total Jobs</div>
+        <div class="metric-value text-gold">${safe(jobs,'total',0)}</div>
+        <div class="metric-sub">Active: ${safe(jobs,'active',0)} · Overdue: <span class="${(alerts.overdue_jobs||0)>0?'text-orange':''}">${alerts.overdue_jobs||0}</span></div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Metal Outstanding</div>
+        <div class="metric-value text-orange">${n(metal.outstanding).toFixed(3)}g</div>
+        <div class="metric-sub">Issued: ${n(metal.total_issued).toFixed(3)}g</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Gross Profit</div>
+        <div class="metric-value ${n(fin.gross_profit)>=0?'text-green':'text-red'}">${fmtCur(fin.gross_profit)}</div>
+        <div class="metric-sub">Revenue: ${fmtCur(fin.total_revenue)}</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Alerts</div>
+        <div class="metric-value ${alertCount>0?'text-orange':'text-green'}">${alertCount>0?alertCount:'✓'}</div>
+        <div class="metric-sub">${alertCount>0?alertCount+' action'+(alertCount>1?'s':'')+' needed':'All clear'}</div>
+      </div>
+    </div>
+
+    ${alertCount > 0 ? `
+    <div style="background:#1a1208;border:1px solid #3a2a0a;border-radius:8px;padding:14px;margin-bottom:14px;display:flex;gap:16px;flex-wrap:wrap">
+      ${(alerts.overdue_jobs||0)>0?`<span style="color:var(--orange);font-size:12px">⚠ ${alerts.overdue_jobs} overdue jobs</span>`:''}
+      ${(alerts.low_stock_items||0)>0?`<span style="color:var(--orange);font-size:12px">⚠ ${alerts.low_stock_items} low stock items</span>`:''}
+      ${(alerts.pending_refinery_settlements||0)>0?`<span style="color:var(--gold);font-size:12px">◉ ${alerts.pending_refinery_settlements} refinery settlements pending</span>`:''}
+    </div>` : ''}
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="card">
+        <div class="card-header"><span class="card-title">Metal Stock</span></div>
+        <table class="data-table">
+          <thead><tr><th>Metal</th><th>Type</th><th>Qty</th></tr></thead>
+          <tbody>${stocks.length
+            ? stocks.map(s=>`<tr><td>${metalBadge(s.type||'—')}</td><td class="text-muted">${s.stock_type||'—'}</td><td style="font-family:monospace">${n(s.qty).toFixed(4)}g</td></tr>`).join('')
+            : '<tr><td colspan="3" class="empty-state">No stock data</td></tr>'
+          }</tbody>
+        </table>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Quick Stats</span></div>
+        <div class="card-body">
+          ${[
+            ['Jobs Completed',        safe(jobs,'completed',0),    'text-green'],
+            ['Jobs on Hold',          safe(jobs,'on_hold',0),      'text-orange'],
+            ['Active Artisans',       safe(kar,'active',0),        ''],
+            ['Pending Assignments',   safe(kar,'pending_assignments',0), 'text-orange'],
+            ['Scrap Weight',          n(scrap.total_weight).toFixed(3)+'g', ''],
+            ['Pending Scrap Batches', safe(scrap,'pending_batches',0), ''],
+            ['Total Revenue',         fmtCur(fin.total_revenue),   'text-gold'],
+            ['Total Cost',            fmtCur(fin.total_cost),      'text-orange'],
+          ].map(([l,v,c])=>`<div class="detail-row">
+            <span class="detail-label">${l}</span>
+            <span class="detail-value ${c||''}">${v}</span>
+          </div>`).join('')}
+        </div>
+      </div>
+    </div>`;
+}
+
+// ── DASHBOARD ─────────────────────────────────────────────────────────────────
+async function renderDashboard() {
+  const d        = await API.get('/api/v1/reports/dashboard');
+  const jobs     = d.jobs        || {};
+  const stocks   = d.metal_stock || [];
+  const pipeline = d.pipeline    || [];
+
+  document.getElementById('reportContent').innerHTML = `
+    <div class="metric-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:14px">
+      <div class="metric-card"><div class="metric-label">Total Jobs</div><div class="metric-value text-gold">${safe(jobs,'total',0)}</div></div>
+      <div class="metric-card"><div class="metric-label">Active</div><div class="metric-value text-green">${safe(jobs,'active',0)}</div></div>
+      <div class="metric-card"><div class="metric-label">QC Pending</div><div class="metric-value text-orange">${safe(jobs,'qc_pending',0)}</div></div>
+      <div class="metric-card"><div class="metric-label">Completed</div><div class="metric-value">${safe(jobs,'completed',0)}</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+      <div class="card">
+        <div class="card-header"><span class="card-title">Metal Stock</span></div>
+        <table class="data-table"><thead><tr><th>Metal</th><th>Type</th><th>Qty</th></tr></thead>
+        <tbody>${stocks.length
+          ? stocks.map(s=>`<tr><td>${metalBadge(s.type||'—')}</td><td class="text-muted">${s.stock_type||'—'}</td><td style="font-family:monospace">${n(s.qty).toFixed(3)}g</td></tr>`).join('')
+          : '<tr><td colspan="3" class="empty-state">No stock data</td></tr>'
+        }</tbody></table>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Production Pipeline</span></div>
+        <div class="card-body">
+          ${pipeline.length
+            ? pipeline.map(p=>`<div class="detail-row">
+                <span class="detail-label">${p.name||'—'}</span>
+                <span class="detail-value ${(p.count||0)>0?'text-gold':''}">${p.count||0} jobs</span>
+              </div>`).join('')
+            : '<div class="empty-state">No pipeline data</div>'}
+        </div>
+      </div>
+    </div>
+    <div class="metric-grid" style="grid-template-columns:repeat(3,1fr)">
+      <div class="metric-card"><div class="metric-label">Scrap Pending</div><div class="metric-value text-orange">${d.scrap_pending_batches||0} batches</div></div>
+      <div class="metric-card"><div class="metric-label">Active Artisans</div><div class="metric-value">${d.active_karigars||0}</div></div>
+      <div class="metric-card"><div class="metric-label">Low Stock Alerts</div><div class="metric-value ${(d.low_stock_alerts||0)>0?'text-red':''}">${d.low_stock_alerts||0}</div></div>
+    </div>`;
+}
+
+// ── JOB HISTORY ───────────────────────────────────────────────────────────────
+let _jhItems = [];
+
+async function renderJobHistory() {
+  document.getElementById('reportContent').innerHTML = `
+    <div class="card" style="margin-bottom:12px">
+      <div class="card-body" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding:14px">
+        <div class="form-group" style="margin:0">
+          <label class="form-label">From</label>
+          <input id="jh_from" type="date" class="form-control" style="width:140px">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">To</label>
+          <input id="jh_to" type="date" class="form-control" style="width:140px">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">Status</label>
+          <select id="jh_status" class="form-control" style="width:150px">
+            <option value="">All Statuses</option>
+            ${['New','Active','QC Pending','QC Rejected','Completed','Dispatched','On Hold'].map(s=>`<option>${s}</option>`).join('')}
+          </select>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="fetchJobHistory()">Apply Filter</button>
+        <button class="btn btn-secondary btn-sm" onclick="exportJobHistory()">↓ Export CSV</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Job History</span>
+        <span id="jhSummary" class="text-muted text-xs"></span>
+      </div>
+      <div class="table-wrapper">
+        <table class="data-table">
+          <thead><tr><th>Job Code</th><th>Customer</th><th>Design</th><th>Metal</th><th>Stage</th><th>Current / Target Wt</th><th>Status</th><th>Priority</th><th>Delivery</th><th>Created</th></tr></thead>
+          <tbody id="jhBody"><tr><td colspan="10" class="empty-state">Loading...</td></tr></tbody>
+        </table>
+      </div>
+    </div>`;
+  fetchJobHistory();
+}
+
+async function fetchJobHistory() {
+  const from   = document.getElementById('jh_from').value;
+  const to     = document.getElementById('jh_to').value;
+  const status = document.getElementById('jh_status').value;
+  let url = '/api/v1/reports/job-history?per_page=200';
+  if (from)   url += `&date_from=${from}`;
+  if (to)     url += `&date_to=${to}`;
+  if (status) url += `&status=${encodeURIComponent(status)}`;
+  try {
+    const d = await API.get(url);
+    _jhItems = d.items || [];
+    const sum = d.summary || {};
+    document.getElementById('jhSummary').textContent =
+      `${d.total||0} jobs · Completed: ${sum.completed||0} · Active: ${sum.active||0} · On Hold: ${sum.on_hold||0}`;
+    document.getElementById('jhBody').innerHTML = _jhItems.length
+      ? _jhItems.map(j=>`<tr>
+          <td class="text-gold bold" style="font-family:monospace">${j.job_code||'—'}</td>
+          <td>${j.customer_name||'—'}</td>
+          <td class="text-muted">${j.design_name||'—'}</td>
+          <td>${metalBadge(j.metal_type)}</td>
+          <td><span class="badge badge-blue" style="font-size:10px">${j.current_stage||'—'}</span></td>
+          <td style="font-family:monospace">${n(j.current_weight).toFixed(3)}g / ${n(j.target_weight).toFixed(3)}g</td>
+          <td>${statusBadge(j.status)}</td>
+          <td>${priorityBadge(j.priority)}</td>
+          <td class="text-muted text-xs">${j.expected_delivery||'—'}</td>
+          <td class="text-muted text-xs">${fmtDate(j.created_at)}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="10" class="empty-state">No jobs found</td></tr>';
+  } catch(e) {
+    document.getElementById('jhBody').innerHTML = `<tr><td colspan="10" class="empty-state">Error: ${e.message}</td></tr>`;
+  }
+}
+
+function exportJobHistory() {
+  if (!_jhItems.length) { showToast('No data to export', 'error'); return; }
+  const header = ['Job Code','Customer','Design','Metal','Stage','Current Wt','Target Wt','Status','Priority','Delivery','Created'];
+  const rows   = _jhItems.map(j => [
+    j.job_code, j.customer_name, j.design_name, j.metal_type, j.current_stage,
+    n(j.current_weight).toFixed(3), n(j.target_weight).toFixed(3),
+    j.status, j.priority, j.expected_delivery||'', fmtDate(j.created_at)
+  ]);
+  const csv = [header,...rows].map(r=>r.map(v=>`"${v||''}"`).join(',')).join('\n');
+  const a   = document.createElement('a');
+  a.href     = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = `job-history-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+// ── WEIGHT VARIANCE ───────────────────────────────────────────────────────────
+async function renderVariance() {
+  const d    = await API.get('/api/v1/reports/weight-variance');
+  const rows = Array.isArray(d) ? d : [];
+  document.getElementById('reportContent').innerHTML = `
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Weight Variance by Stage</span>
+        <span class="text-muted text-xs">${rows.length} records</span>
+      </div>
+      ${rows.length
+        ? `<div class="table-wrapper"><table class="data-table">
+            <thead><tr><th>Job ID</th><th>Stage</th><th>Weight In</th><th>Weight Out</th><th>Variance</th><th>Variance %</th></tr></thead>
+            <tbody>${rows.map(r=>`<tr>
+              <td class="text-gold" style="font-family:monospace">#${r.job_id}</td>
+              <td>${r.stage||'—'}</td>
+              <td style="font-family:monospace">${fmtWt(r.weight_in)}</td>
+              <td style="font-family:monospace">${fmtWt(r.weight_out)}</td>
+              <td class="${n(r.variance)>0?'text-orange':'text-green'}" style="font-family:monospace">${fmtWt(r.variance)}</td>
+              <td class="${n(r.variance_pct)>5?'text-red':n(r.variance_pct)>2?'text-orange':'text-green'}">${fmtPct(r.variance_pct)}</td>
+            </tr>`).join('')}</tbody>
+          </table></div>`
+        : '<div class="card-body empty-state">No variance data — stages need weight in & out recorded</div>'
+      }
+    </div>`;
+}
+
+// ── DEPARTMENT LOSS ───────────────────────────────────────────────────────────
+async function renderDeptLoss() {
+  const d     = await API.get('/api/v1/reports/department-loss');
+  const depts = d.departments || [];
+  document.getElementById('reportContent').innerHTML = `
+    <div class="metric-grid" style="grid-template-columns:1fr;margin-bottom:14px">
+      <div class="metric-card">
+        <div class="metric-label">Overall Total Loss</div>
+        <div class="metric-value text-orange">${n(d.overall_loss).toFixed(4)}g</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Department Loss Analysis</span></div>
+      <div class="table-wrapper">
+        <table class="data-table">
+          <thead><tr><th>Department</th><th>Jobs Processed</th><th>Weight In</th><th>Weight Out</th><th>Total Loss</th><th>Avg Loss %</th></tr></thead>
+          <tbody>${depts.length
+            ? depts.map(r=>`<tr>
+                <td class="bold">${r.department||'—'}</td>
+                <td class="text-muted">${r.jobs_processed||0}</td>
+                <td style="font-family:monospace">${fmtWt(r.total_weight_in)}</td>
+                <td style="font-family:monospace">${fmtWt(r.total_weight_out)}</td>
+                <td class="${n(r.total_loss)>0?'text-orange':''}" style="font-family:monospace">${fmtWt(r.total_loss)}</td>
+                <td class="${n(r.avg_loss_pct)>5?'text-red':n(r.avg_loss_pct)>2?'text-orange':''}">${fmtPct(r.avg_loss_pct)}</td>
+              </tr>`).join('')
+            : '<tr><td colspan="6" class="empty-state">No data</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+// ── METAL RECONCILIATION ──────────────────────────────────────────────────────
+async function renderMetal() {
+  const fromDate    = document.getElementById('metalFromDate')?.value || '';
+  const toDate      = document.getElementById('metalToDate')?.value   || '';
+  const metalFilter = document.getElementById('metalTypeFilter')?.value || '';
+
+  let dailyUrl = '/api/v1/reports/daily-metal-reconciliation?';
+  if (fromDate)    dailyUrl += `from_date=${fromDate}&`;
+  if (toDate)      dailyUrl += `to_date=${toDate}&`;
+  if (metalFilter) dailyUrl += `metal_type=${metalFilter}&`;
+
+  const [r1, r2, r3, r4] = await Promise.allSettled([
+    API.get('/api/v1/reports/metal-reconciliation'),
+    API.get('/api/v1/metal/balance/department'),
+    API.get('/api/v1/metal/balance/karigar'),
+    API.get(dailyUrl)
+  ]);
+  const d     = r1.status==='fulfilled' ? r1.value : null;
+  const dept  = r2.status==='fulfilled' ? r2.value : null;
+  const kar   = r3.status==='fulfilled' ? r3.value : null;
+  const daily = r4.status==='fulfilled' ? r4.value : null;
+
+  if (!d) { showError(r1.reason?.message || 'Metal reconciliation failed'); return; }
+
+  const stocks    = d.current_stock || [];
+  const dailyRows = daily?.rows     || [];
+  const sum       = daily?.summary  || {};
+
+  document.getElementById('reportContent').innerHTML = `
+    <div class="metric-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:14px">
+      <div class="metric-card"><div class="metric-label">Total Issued</div><div class="metric-value text-orange">${n(d.total_issued).toFixed(3)}g</div></div>
+      <div class="metric-card"><div class="metric-label">Total Returned</div><div class="metric-value text-green">${n(d.total_returned).toFixed(3)}g</div></div>
+      <div class="metric-card"><div class="metric-label">Net Outstanding</div><div class="metric-value text-gold">${n(d.net_outstanding).toFixed(3)}g</div></div>
+      <div class="metric-card"><div class="metric-label">Value Issued</div><div class="metric-value">${fmtCur(n(sum.total_value_issued))}</div></div>
+    </div>
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-header">
+        <span class="card-title">Day-wise Metal Reconciliation</span>
+        <div style="display:flex;gap:8px;align-items:center">
+          <select id="metalTypeFilter" class="form-control" style="width:110px;padding:4px 8px;font-size:11px" onchange="renderMetal()">
+            <option value="">All Metals</option>
+            <option value="24K" ${metalFilter==='24K'?'selected':''}>24K</option>
+            <option value="22K" ${metalFilter==='22K'?'selected':''}>22K</option>
+            <option value="18K" ${metalFilter==='18K'?'selected':''}>18K</option>
+            <option value="Silver" ${metalFilter==='Silver'?'selected':''}>Silver</option>
+          </select>
+          <input type="date" id="metalFromDate" class="form-control" style="width:130px;padding:4px 8px;font-size:11px" onchange="renderMetal()" value="${fromDate}">
+          <span class="text-muted text-xs">to</span>
+          <input type="date" id="metalToDate" class="form-control" style="width:130px;padding:4px 8px;font-size:11px" onchange="renderMetal()" value="${toDate}">
+        </div>
+      </div>
+      <div class="table-wrapper">
+        <table class="data-table">
+          <thead><tr><th>Date</th><th>Metal</th><th>Issued</th><th>Returned</th><th>Net Outstanding</th><th>Fine Issued</th><th>Value Issued</th><th>Txns</th></tr></thead>
+          <tbody>
+            ${dailyRows.length
+              ? dailyRows.map(r=>`<tr>
+                  <td style="font-family:monospace;color:#c8b87a">${r.date}</td>
+                  <td>${metalBadge(r.metal_type)}</td>
+                  <td class="text-orange" style="font-family:monospace">${n(r.issued).toFixed(3)}g</td>
+                  <td class="text-green" style="font-family:monospace">${n(r.returned).toFixed(3)}g</td>
+                  <td class="${n(r.net_outstanding)>0?'text-gold':''}" style="font-family:monospace">${n(r.net_outstanding).toFixed(3)}g</td>
+                  <td class="text-muted" style="font-family:monospace">${n(r.fine_issued).toFixed(4)}g</td>
+                  <td>${fmtCur(r.value_issued)}</td>
+                  <td class="text-muted">${r.tx_count}</td>
+                </tr>`).join('') +
+                `<tr style="border-top:2px solid var(--gold);background:#1a1500;font-weight:600">
+                  <td colspan="2" style="text-align:right;color:var(--gold)">Total (${sum.days_count||0} days)</td>
+                  <td class="text-orange">${n(sum.total_issued).toFixed(3)}g</td>
+                  <td class="text-green">${n(sum.total_returned).toFixed(3)}g</td>
+                  <td class="text-gold">${n(sum.net_outstanding).toFixed(3)}g</td>
+                  <td></td>
+                  <td>${fmtCur(sum.total_value_issued)}</td>
+                  <td class="text-muted">${sum.tx_count||0}</td>
+                </tr>`
+              : '<tr><td colspan="8" class="empty-state">No transactions in selected period</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+      <div class="card">
+        <div class="card-header"><span class="card-title">Department Balance</span></div>
+        ${!dept ? `<div class="card-body empty-state">${r2.reason?.message||'No data'}</div>` :
+        `<table class="data-table"><thead><tr><th>Department</th><th>Issued</th><th>Returned</th><th>Outstanding</th></tr></thead>
+        <tbody>${(dept||[]).length
+          ? dept.map(r=>`<tr>
+              <td>${r.department_name||'—'}</td>
+              <td class="text-orange">${n(r.total_issued).toFixed(3)}g</td>
+              <td class="text-green">${n(r.total_returned).toFixed(3)}g</td>
+              <td class="${n(r.outstanding)>0?'text-gold':''}">${n(r.outstanding).toFixed(3)}g</td>
+            </tr>`).join('')
+          : '<tr><td colspan="4" class="empty-state">No data</td></tr>'}
+        </tbody></table>`}
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">Artisan Balance</span></div>
+        ${!kar ? `<div class="card-body empty-state">${r3.reason?.message||'No data'}</div>` :
+        `<table class="data-table"><thead><tr><th>Artisan</th><th>Issued</th><th>Outstanding</th></tr></thead>
+        <tbody>${(kar||[]).filter(k=>n(k.total_issued)>0).length
+          ? kar.filter(k=>n(k.total_issued)>0).map(r=>`<tr>
+              <td>${r.karigar_name||'—'}</td>
+              <td class="text-orange">${n(r.total_issued).toFixed(3)}g</td>
+              <td class="${n(r.outstanding)>0?'text-gold':''}">${n(r.outstanding).toFixed(3)}g</td>
+            </tr>`).join('')
+          : '<tr><td colspan="3" class="empty-state">No data</td></tr>'}
+        </tbody></table>`}
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Current Metal Stock</span></div>
+      <table class="data-table"><thead><tr><th>Metal</th><th>Stock Type</th><th>Qty</th></tr></thead>
+      <tbody>${stocks.length
+        ? stocks.map(s=>`<tr><td>${metalBadge(s.metal||'—')}</td><td class="text-muted">${s.type||'—'}</td><td style="font-family:monospace">${n(s.qty).toFixed(4)}g</td></tr>`).join('')
+        : '<tr><td colspan="3" class="empty-state">No stock</td></tr>'}
+      </tbody></table>
+    </div>`;
+}
+
+// ── KARIGAR PRODUCTIVITY ──────────────────────────────────────────────────────
+async function renderKarigar() {
+  const d    = await API.get('/api/v1/reports/karigar-productivity');
+  const rows = Array.isArray(d) ? d : [];
+  const totalWages = rows.reduce((a,r)=>a+n(r.total_wages),0);
+  document.getElementById('reportContent').innerHTML = `
+    <div class="metric-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:14px">
+      <div class="metric-card"><div class="metric-label">Total Artisans</div><div class="metric-value text-gold">${rows.length}</div></div>
+      <div class="metric-card"><div class="metric-label">Total Wages</div><div class="metric-value">${fmtCur(totalWages)}</div></div>
+      <div class="metric-card"><div class="metric-label">With Pending Work</div><div class="metric-value text-orange">${rows.filter(r=>r.pending_pieces>0).length}</div></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Artisan Productivity</span></div>
+      <div class="table-wrapper">
+        <table class="data-table">
+          <thead><tr><th>Code</th><th>Name</th><th>Skill</th><th>Piece Rate</th><th>Completed</th><th>Pending</th><th>Total Wages</th></tr></thead>
+          <tbody>${rows.length
+            ? rows.map(k=>`<tr>
+                <td class="text-gold" style="font-family:monospace">${k.karigar_code||'—'}</td>
+                <td class="bold">${k.name||'—'}</td>
+                <td><span class="badge badge-gray">${k.skill||'—'}</span></td>
+                <td>${fmtCur(k.piece_rate)}</td>
+                <td class="text-green">${k.completed_pieces||0}</td>
+                <td class="${(k.pending_pieces||0)>0?'text-orange':''}">${k.pending_pieces||0}</td>
+                <td class="text-gold bold">${fmtCur(k.total_wages)}</td>
+              </tr>`).join('')
+            : '<tr><td colspan="7" class="empty-state">No artisans found</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+// ── SCRAP GENERATION ──────────────────────────────────────────────────────────
+async function renderScrap() {
+  const d      = await API.get('/api/v1/reports/scrap-generation');
+  const byDept = d.by_department || [];
+  const byType = d.by_type       || [];
+  document.getElementById('reportContent').innerHTML = `
+    <div class="metric-grid" style="grid-template-columns:1fr;margin-bottom:14px">
+      <div class="metric-card">
+        <div class="metric-label">Total Scrap Weight</div>
+        <div class="metric-value text-gold">${n(d.total_scrap_weight).toFixed(4)}g</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="card">
+        <div class="card-header"><span class="card-title">By Department</span></div>
+        <table class="data-table"><thead><tr><th>Department</th><th>Weight</th><th>Batches</th></tr></thead>
+        <tbody>${byDept.length
+          ? byDept.map(r=>`<tr><td class="bold">${r.department||'—'}</td><td class="text-gold" style="font-family:monospace">${n(r.total_weight).toFixed(4)}g</td><td class="text-muted">${r.batches||0}</td></tr>`).join('')
+          : '<tr><td colspan="3" class="empty-state">No data</td></tr>'}
+        </tbody></table>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">By Type</span></div>
+        <table class="data-table"><thead><tr><th>Type</th><th>Weight</th><th>Batches</th></tr></thead>
+        <tbody>${byType.length
+          ? byType.map(r=>`<tr><td class="bold">${r.type||'—'}</td><td class="text-gold" style="font-family:monospace">${n(r.total_weight).toFixed(4)}g</td><td class="text-muted">${r.batches||0}</td></tr>`).join('')
+          : '<tr><td colspan="3" class="empty-state">No data</td></tr>'}
+        </tbody></table>
+      </div>
+    </div>`;
+}
+
+// ── REFINERY RECOVERY ─────────────────────────────────────────────────────────
+async function renderRefinery() {
+  const d          = await API.get('/api/v1/reports/refinery-recovery');
+  const sum        = d.summary    || {};
+  const dispatches = d.dispatches || [];
+  document.getElementById('reportContent').innerHTML = `
+    <div class="metric-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:14px">
+      <div class="metric-card"><div class="metric-label">Total Dispatches</div><div class="metric-value">${safe(sum,'total_dispatches',0)}</div></div>
+      <div class="metric-card"><div class="metric-label">Settled</div><div class="metric-value text-green">${safe(sum,'settled',0)}</div></div>
+      <div class="metric-card"><div class="metric-label">Pending</div><div class="metric-value text-orange">${safe(sum,'pending',0)}</div></div>
+      <div class="metric-card"><div class="metric-label">Total Variance</div><div class="metric-value ${n(sum.overall_variance)<0?'text-red':'text-green'}">${n(sum.overall_variance).toFixed(4)}g</div></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Dispatch Recovery Detail</span></div>
+      <div class="table-wrapper">
+        <table class="data-table">
+          <thead><tr><th>Dispatch No</th><th>Refinery</th><th>Date</th><th>Expected Fine</th><th>Received Fine</th><th>Recovery %</th><th>Charges</th><th>Status</th></tr></thead>
+          <tbody>${dispatches.length
+            ? dispatches.map(r=>`<tr>
+                <td class="text-gold" style="font-family:monospace">${r.dispatch_no||'—'}</td>
+                <td>${r.refinery_name||'—'}</td>
+                <td class="text-muted text-xs">${r.dispatch_date||'—'}</td>
+                <td style="font-family:monospace">${n(r.expected_fine_gold).toFixed(4)}g</td>
+                <td style="font-family:monospace">${r.fine_gold_received!=null?n(r.fine_gold_received).toFixed(4)+'g':'—'}</td>
+                <td class="${r.recovery_pct!=null?(n(r.recovery_pct)>=95?'text-green':'text-orange'):'text-muted'}">${r.recovery_pct!=null?fmtPct(r.recovery_pct):'—'}</td>
+                <td class="text-muted">${r.refining_charges?fmtCur(r.refining_charges):'—'}</td>
+                <td><span class="badge ${r.status==='Settled'?'badge-green':'badge-orange'}">${r.status||'—'}</span></td>
+              </tr>`).join('')
+            : '<tr><td colspan="8" class="empty-state">No dispatches</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+// ── COST COMPARISON ───────────────────────────────────────────────────────────
+async function renderCost() {
+  const d    = await API.get('/api/v1/reports/cost-comparison');
+  const sum  = d.summary || {};
+  const jobs = d.jobs    || [];
+  document.getElementById('reportContent').innerHTML = `
+    <div class="metric-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:14px">
+      <div class="metric-card"><div class="metric-label">Total Revenue</div><div class="metric-value text-gold">${fmtCur(sum.total_revenue)}</div></div>
+      <div class="metric-card"><div class="metric-label">Total Cost</div><div class="metric-value text-orange">${fmtCur(sum.total_cost)}</div></div>
+      <div class="metric-card"><div class="metric-label">Gross Profit</div><div class="metric-value ${n(sum.total_profit)>=0?'text-green':'text-red'}">${fmtCur(sum.total_profit)}</div></div>
+      <div class="metric-card"><div class="metric-label">Avg Margin</div><div class="metric-value ${n(sum.avg_margin_pct)>=20?'text-green':n(sum.avg_margin_pct)>=10?'text-gold':'text-red'}">${fmtPct(sum.avg_margin_pct)}</div></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">Job-wise Profit</span><span class="text-muted text-xs">Sorted by profit</span></div>
+      <div class="table-wrapper">
+        <table class="data-table">
+          <thead><tr><th>Job Code</th><th>Design</th><th>Metal</th><th>Total Cost</th><th>Sale Price</th><th>Profit</th><th>Margin %</th></tr></thead>
+          <tbody>${jobs.length
+            ? jobs.map(r=>`<tr>
+                <td class="text-gold bold" style="font-family:monospace">${r.job_code||('#'+r.job_id)||'—'}</td>
+                <td class="text-muted">${r.design_name||'—'}</td>
+                <td>${metalBadge(r.metal_type||'—')}</td>
+                <td style="font-family:monospace">${fmtCur(r.total_cost)}</td>
+                <td style="font-family:monospace">${fmtCur(r.sale_price)}</td>
+                <td class="${n(r.profit)>=0?'text-green':'text-red'}" style="font-family:monospace;font-weight:600">${fmtCur(r.profit)}</td>
+                <td class="${n(r.margin_pct)>=20?'text-green':n(r.margin_pct)>=10?'text-gold':'text-red'}" style="font-weight:700">${fmtPct(r.margin_pct)}</td>
+              </tr>`).join('')
+            : '<tr><td colspan="7" class="empty-state">No costing data — add costs in Costing module first</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+// ── AUDIT TRAIL ───────────────────────────────────────────────────────────────
+let _auditItems = [];
+
+async function renderAudit() {
+  const d       = await API.get('/api/v1/reports/audit-trail');
+  _auditItems   = d.items || [];
+  const modules = [...new Set(_auditItems.map(l=>l.module).filter(Boolean))].sort();
+
+  document.getElementById('reportContent').innerHTML = `
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Audit Trail</span>
+        <div style="display:flex;gap:8px">
+          <select id="auditMod" class="form-control" style="width:160px;font-size:12px" onchange="filterAudit()">
+            <option value="">All Modules</option>
+            ${modules.map(m=>`<option>${m}</option>`).join('')}
+          </select>
+          <input id="auditSearch" class="search-input" style="width:180px" placeholder="Search action..." oninput="filterAudit()">
+        </div>
+      </div>
+      <div class="table-wrapper">
+        <table class="data-table">
+          <thead><tr><th>User #</th><th>Action</th><th>Module</th><th>Record ID</th><th>Time</th></tr></thead>
+          <tbody id="auditBody">${auditRows(_auditItems)}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+function auditRows(items) {
+  return items.length
+    ? items.map(l=>`<tr>
+        <td class="text-muted text-xs">#${l.user_id||'—'}</td>
+        <td>${l.action||'—'}</td>
+        <td><span class="badge badge-blue">${l.module||'—'}</span></td>
+        <td class="text-muted text-xs">${l.record_id||'—'}</td>
+        <td class="text-muted text-xs">${fmtDateTime(l.created_at)}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="5" class="empty-state">No logs</td></tr>';
+}
+
+function filterAudit() {
+  const mod    = document.getElementById('auditMod').value;
+  const search = document.getElementById('auditSearch').value.toLowerCase();
+  let items    = _auditItems;
+  if (mod)    items = items.filter(l => l.module === mod);
+  if (search) items = items.filter(l => (l.action||'').toLowerCase().includes(search));
+  document.getElementById('auditBody').innerHTML = auditRows(items);
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+showReport('master', document.querySelector('.tab'));
 </script>
 {% endblock %}

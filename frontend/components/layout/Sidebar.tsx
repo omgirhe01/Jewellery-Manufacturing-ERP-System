@@ -13,7 +13,7 @@ const NAV = [
   ]},
   { section: 'Metal & Artisan', items: [
     { href: '/metal', icon: '◎', label: 'Metal Ledger' },
-    { href: '/karigar', icon: '✦', label: 'Karigar' },
+    { href: '/karigar', icon: '✦', label: 'Artisans' },
   ]},
   { section: 'Materials', items: [
     { href: '/inventory', icon: '📦', label: 'Inventory' },

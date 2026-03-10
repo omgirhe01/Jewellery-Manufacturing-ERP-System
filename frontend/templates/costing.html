@@ -1,76 +1,499 @@
 {% extends "base.html" %}
 {% block title %}Costing{% endblock %}
 {% block page_title %}Costing{% endblock %}
-{% block page_subtitle %}JOB COST ANALYSIS & PROFITABILITY{% endblock %}
+{% block page_subtitle %}JOB COST ANALYSIS · PROFITABILITY{% endblock %}
+
 {% block content %}
-<div style="display:grid;grid-template-columns:260px 1fr;gap:14px">
-  <div class="card">
-    <div class="card-header"><span class="card-title">Select Job</span></div>
-    <div class="card-body" style="padding:10px">
-      <input class="search-input" id="costSearch" placeholder="Search job..." style="width:100%;margin-bottom:8px">
-      <div id="costJobList" style="max-height:480px;overflow:auto"></div>
+
+<!-- TOOLBAR -->
+<div class="toolbar" style="margin-bottom:16px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px">
+  <div class="toolbar-left">
+    <div class="tab-group">
+      <button class="tab active" onclick="switchTab('calculator',this)">Cost Calculator</button>
+      <button class="tab" onclick="switchTab('profitability',this)">Profitability Report</button>
     </div>
   </div>
-  <div class="card">
-    <div class="card-header">
-      <span class="card-title" id="costingTitle">Cost Calculator</span>
-      <button class="btn btn-primary btn-sm hidden" id="saveBtn" onclick="saveCost()">Save Cost</button>
+  <div class="toolbar-right" id="tabActions">
+    <!-- filled by tab switch -->
+  </div>
+</div>
+
+
+<!-- ── TAB: CALCULATOR ── -->
+<div id="tab-calculator">
+  <div style="display:grid;grid-template-columns:260px 1fr;gap:14px">
+
+    <!-- Job List -->
+    <div class="card" style="height:fit-content">
+      <div class="card-header"><span class="card-title">Select Job</span></div>
+      <div style="padding:10px">
+        <input class="search-input" id="costSearch" style="width:100%;margin-bottom:8px"
+               placeholder="Search job / customer..." oninput="filterJobs()">
+        <div id="costJobList" style="max-height:540px;overflow:auto"></div>
+      </div>
     </div>
-    <div class="card-body" id="costingBody">
-      <div class="empty-state" style="padding:48px">Select a job to view or enter cost details</div>
+
+    <!-- Cost Panel -->
+    <div>
+
+      <!-- Empty state -->
+      <div id="emptyState" class="card">
+        <div class="empty-state" style="padding:60px 20px">
+          <div style="font-size:36px;margin-bottom:12px;opacity:.5">⚖</div>
+          <div>Select a job from the left to view or enter cost details</div>
+        </div>
+      </div>
+
+      <!-- Cost form (hidden until job selected) -->
+      <div id="costPanel" class="hidden">
+
+        <!-- KPI strip -->
+        <div class="metric-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:14px">
+          <div class="metric-card">
+            <div class="metric-label">Total Cost</div>
+            <div class="metric-value text-orange" id="kTotalCost">₹0</div>
+            <div class="metric-sub">All components</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Sale Price</div>
+            <div class="metric-value text-gold" id="kSalePrice">₹0</div>
+            <div class="metric-sub">Quoted to customer</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Profit / Loss</div>
+            <div class="metric-value" id="kProfit">₹0</div>
+            <div class="metric-sub" id="kProfitSub">—</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Margin %</div>
+            <div class="metric-value" id="kMargin">—</div>
+            <div class="metric-sub">Net margin</div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 260px;gap:14px">
+
+          <!-- COST ENTRY FORM -->
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title" id="costingTitle">Cost Calculator</span>
+              <button class="btn btn-primary btn-sm" id="saveBtn" onclick="saveCost()">💾 Save Cost</button>
+            </div>
+            <div class="card-body" style="padding:18px">
+
+              <!-- Gold -->
+              <div class="text-xs text-muted" style="text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px">Gold Cost</div>
+              <div class="form-row" style="margin-bottom:0">
+                <div class="form-group">
+                  <label class="form-label">Gold Weight Used (g)</label>
+                  <input id="c_gold_weight" type="number" step="0.001" min="0" class="form-control" value="0" oninput="calcTotal()">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Gold Rate (₹/g)</label>
+                  <input id="c_gold_rate" type="number" step="0.01" min="0" class="form-control" value="0" oninput="calcTotal()">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Gold Cost (₹) <span class="text-muted text-xs">auto</span></label>
+                  <input id="c_gold_cost" type="number" class="form-control" readonly
+                         style="background:#0a0900;color:var(--gold)">
+                </div>
+              </div>
+
+              <div style="border-top:1px solid var(--border);margin:16px 0"></div>
+
+              <!-- Other costs -->
+              <div class="text-xs text-muted" style="text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px">Other Costs</div>
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:4px">
+                <div class="form-group">
+                  <label class="form-label">Labour Cost (₹)</label>
+                  <input id="c_labour_cost" type="number" step="0.01" min="0" class="form-control" value="0" oninput="calcTotal()">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Stone Cost (₹)</label>
+                  <input id="c_stone_cost" type="number" step="0.01" min="0" class="form-control" value="0" oninput="calcTotal()">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Wastage Cost (₹)</label>
+                  <input id="c_wastage_cost" type="number" step="0.01" min="0" class="form-control" value="0" oninput="calcTotal()">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Refinery Adjustment (₹)</label>
+                  <input id="c_refinery_adjustment" type="number" step="0.01" class="form-control" value="0" oninput="calcTotal()">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Overhead Cost (₹)</label>
+                  <input id="c_overhead_cost" type="number" step="0.01" min="0" class="form-control" value="0" oninput="calcTotal()">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Sale Price (₹)</label>
+                  <input id="c_sale_price" type="number" step="0.01" min="0" class="form-control" value="0" oninput="calcTotal()"
+                         style="border-color:rgba(201,168,76,.4)">
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- COST BREAKDOWN VISUAL -->
+          <div style="display:flex;flex-direction:column;gap:14px">
+
+            <div class="card">
+              <div class="card-header"><span class="card-title">Cost Breakdown</span></div>
+              <div class="card-body" id="breakdownPanel">
+                <div class="empty-state text-xs">Enter values to see breakdown</div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header"><span class="card-title">Profit Analysis</span></div>
+              <div class="card-body" id="profitAnalysisPanel">
+                <div class="empty-state text-xs">—</div>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+      </div>
     </div>
   </div>
 </div>
+
+
+<!-- ── TAB: PROFITABILITY ── -->
+<div id="tab-profitability" class="hidden">
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
+    <div class="metric-card">
+      <div class="metric-label">Total Revenue</div>
+      <div class="metric-value text-gold" id="pRevenue">—</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Total Cost</div>
+      <div class="metric-value text-orange" id="pCost">—</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Total Profit</div>
+      <div class="metric-value text-green" id="pProfit">—</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Avg Margin</div>
+      <div class="metric-value text-gold" id="pMargin">—</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Job-wise Profitability</span>
+      <span class="text-xs text-muted" id="profCount"></span>
+    </div>
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Job Code</th>
+            <th>Customer</th>
+            <th>Gold Cost</th>
+            <th>Labour</th>
+            <th>Other</th>
+            <th>Total Cost</th>
+            <th>Sale Price</th>
+            <th>Profit / Loss</th>
+            <th>Margin %</th>
+          </tr>
+        </thead>
+        <tbody id="profitBody">
+          <tr><td colspan="9" class="empty-state">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
+
 {% block extra_js %}
 <script>
+// ── State ──────────────────────────────────────────────────────────────────────
 let selectedJobId = null;
-async function loadJobList(q='') {
-  const data = await API.get(`/api/v1/jobs/?per_page=50${q?'&q='+encodeURIComponent(q):''}`);
-  document.getElementById('costJobList').innerHTML = data.items.map(j=>`
-    <div onclick="selectJob(${j.id},'${j.job_code}')" style="padding:10px 12px;border-radius:4px;cursor:pointer;margin-bottom:2px;background:#0e0d0b;border:1px solid #2a2318" class="job-list-item">
-      <div class="text-gold text-sm bold">${j.job_code}</div>
-      <div class="text-xs text-muted">${j.design_name} · ${j.customer_name}</div>
-    </div>`).join('');
-}
-document.getElementById('costSearch').addEventListener('input', debounce(e=>loadJobList(e.target.value)));
+let allJobs       = [];
 
+// ── Tab switch ─────────────────────────────────────────────────────────────────
+function switchTab(tab, btn) {
+  document.querySelectorAll('.tab-group .tab').forEach(t => t.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  ['calculator','profitability'].forEach(t =>
+    document.getElementById('tab-' + t).classList.toggle('hidden', t !== tab)
+  );
+  if (tab === 'profitability') loadProfitability();
+}
+
+// ── Load job list ──────────────────────────────────────────────────────────────
+async function loadJobList() {
+  try {
+    const data = await API.get('/api/v1/jobs/?per_page=100&page=1');
+    allJobs = data.items || [];
+    renderJobList(allJobs);
+  } catch(e) { console.error(e); }
+}
+
+function renderJobList(jobs) {
+  document.getElementById('costJobList').innerHTML = jobs.length
+    ? jobs.map(j => `
+        <div onclick="selectJob(${j.id},'${j.job_code}')"
+             class="job-list-item ${selectedJobId === j.id ? 'selected' : ''}"
+             id="jli_${j.id}"
+             style="padding:9px 11px;border-radius:5px;cursor:pointer;margin-bottom:3px;
+                    background:#0e0d0b;border:1px solid var(--border);transition:border-color .15s"
+             onmouseover="this.style.borderColor='var(--gold)'"
+             onmouseout="this.style.borderColor='${selectedJobId===j.id ? 'var(--gold)' : 'var(--border)'}'">
+          <div class="text-gold bold" style="font-size:12px">${j.job_code}</div>
+          <div class="text-muted" style="font-size:11px">${j.customer_name || '—'}</div>
+          <div style="font-size:10px;color:#5a4a2a;margin-top:2px">${j.status || ''} · ${j.metal_type || ''}</div>
+        </div>`).join('')
+    : '<div class="empty-state text-xs">No jobs found</div>';
+}
+
+function filterJobs() {
+  const q = document.getElementById('costSearch').value.toLowerCase();
+  renderJobList(q ? allJobs.filter(j =>
+    (j.job_code     || '').toLowerCase().includes(q) ||
+    (j.customer_name|| '').toLowerCase().includes(q) ||
+    (j.design_name  || '').toLowerCase().includes(q)
+  ) : allJobs);
+}
+
+// ── Select job ─────────────────────────────────────────────────────────────────
 async function selectJob(id, code) {
+  // Highlight selection
+  document.querySelectorAll('.job-list-item').forEach(el => {
+    el.style.borderColor = 'var(--border)';
+  });
+  const selected = document.getElementById(`jli_${id}`);
+  if (selected) selected.style.borderColor = 'var(--gold)';
+
   selectedJobId = id;
   document.getElementById('costingTitle').textContent = `Costing — ${code}`;
-  document.getElementById('saveBtn').classList.remove('hidden');
-  let existing = {};
-  try { existing = await API.get(`/api/costing/job/${id}`); } catch(e) {}
+  document.getElementById('emptyState').classList.add('hidden');
+  document.getElementById('costPanel').classList.remove('hidden');
+
+  let existing = null;
+  try { existing = await API.get(`/api/v1/costing/job/${id}`); } catch(e) {}
+
   const fields = [
-    ['gold_cost', 'Gold Cost (₹)', existing.gold_cost||0],
-    ['labour_cost', 'Labour Cost (₹)', existing.labour_cost||0],
-    ['stone_cost', 'Stone Cost (₹)', existing.stone_cost||0],
-    ['wastage_cost', 'Wastage Cost (₹)', existing.wastage_cost||0],
-    ['refinery_adjustment', 'Refinery Adjustment (₹)', existing.refinery_adjustment||0],
-    ['overhead_cost', 'Overhead Cost (₹)', existing.overhead_cost||0],
-    ['sale_price', 'Sale Price (₹)', existing.sale_price||0],
+    'c_gold_weight','c_gold_rate','c_gold_cost',
+    'c_labour_cost','c_stone_cost','c_wastage_cost',
+    'c_refinery_adjustment','c_overhead_cost','c_sale_price'
   ];
-  document.getElementById('costingBody').innerHTML = `
-    <div class="form-row-3">
-      ${fields.map(([id,lbl,val])=>`<div class="form-group"><label class="form-label">${lbl}</label><input id="c_${id}" type="number" step="0.01" class="form-control" value="${val}" onchange="calcTotal()"></div>`).join('')}
+
+  if (existing) {
+    const map = {
+      c_gold_weight:         existing.gold_weight_used,
+      c_gold_rate:           existing.gold_rate,
+      c_gold_cost:           existing.gold_cost,
+      c_labour_cost:         existing.labour_cost,
+      c_stone_cost:          existing.stone_cost,
+      c_wastage_cost:        existing.wastage_cost,
+      c_refinery_adjustment: existing.refinery_adjustment,
+      c_overhead_cost:       existing.overhead_cost,
+      c_sale_price:          existing.sale_price,
+    };
+    Object.entries(map).forEach(([fieldId, val]) => {
+      document.getElementById(fieldId).value =
+        parseFloat(val || 0).toFixed(fieldId === 'c_gold_weight' ? 3 : 2);
+    });
+    updateKPIs(existing);
+    renderBreakdown(existing);
+  } else {
+    fields.forEach(id => { document.getElementById(id).value = '0'; });
+    updateKPIs({ total_cost:0, sale_price:0, profit_loss:0, margin_pct:0 });
+    document.getElementById('breakdownPanel').innerHTML =
+      '<div class="empty-state text-xs">Enter values to see breakdown</div>';
+    document.getElementById('profitAnalysisPanel').innerHTML =
+      '<div class="empty-state text-xs">—</div>';
+  }
+}
+
+// ── Calculate ──────────────────────────────────────────────────────────────────
+function g(id) { return parseFloat(document.getElementById(id).value) || 0; }
+
+function calcTotal() {
+  const goldCost = Math.round(g('c_gold_weight') * g('c_gold_rate') * 100) / 100;
+  document.getElementById('c_gold_cost').value = goldCost.toFixed(2);
+
+  const total  = goldCost + g('c_labour_cost') + g('c_stone_cost') +
+                 g('c_wastage_cost') + g('c_refinery_adjustment') + g('c_overhead_cost');
+  const sale   = g('c_sale_price');
+  const profit = Math.round((sale - total) * 100) / 100;
+  const margin = sale > 0 ? Math.round(profit / sale * 10000) / 100 : 0;
+
+  const d = { total_cost: total, sale_price: sale, profit_loss: profit, margin_pct: margin,
+              gold_cost: goldCost, labour_cost: g('c_labour_cost'),
+              stone_cost: g('c_stone_cost'), wastage_cost: g('c_wastage_cost'),
+              refinery_adjustment: g('c_refinery_adjustment'), overhead_cost: g('c_overhead_cost') };
+  updateKPIs(d);
+  renderBreakdown(d);
+}
+
+// ── KPI update ─────────────────────────────────────────────────────────────────
+function updateKPIs(d) {
+  const profit = parseFloat(d.profit_loss || 0);
+  const margin = parseFloat(d.margin_pct  || 0);
+  document.getElementById('kTotalCost').textContent = fmtCur(d.total_cost || 0);
+  document.getElementById('kSalePrice').textContent = fmtCur(d.sale_price || 0);
+  document.getElementById('kProfit').textContent    = fmtCur(profit);
+  document.getElementById('kProfit').className      = 'metric-value ' + (profit >= 0 ? 'text-green' : 'text-red');
+  document.getElementById('kProfitSub').textContent = profit >= 0 ? 'Profitable' : 'Loss making';
+  document.getElementById('kMargin').textContent    = margin.toFixed(2) + '%';
+  document.getElementById('kMargin').className      = 'metric-value ' + (margin >= 20 ? 'text-green' : margin >= 0 ? 'text-gold' : 'text-red');
+}
+
+// ── Breakdown panel ────────────────────────────────────────────────────────────
+function renderBreakdown(d) {
+  const total = parseFloat(d.total_cost || 0);
+  if (total <= 0) {
+    document.getElementById('breakdownPanel').innerHTML =
+      '<div class="empty-state text-xs">Enter values to see breakdown</div>';
+    document.getElementById('profitAnalysisPanel').innerHTML =
+      '<div class="empty-state text-xs">—</div>';
+    return;
+  }
+
+  const items = [
+    { label: 'Gold',              val: parseFloat(d.gold_cost            || 0), color: 'var(--gold)' },
+    { label: 'Labour',            val: parseFloat(d.labour_cost          || 0), color: 'var(--blue)' },
+    { label: 'Stone',             val: parseFloat(d.stone_cost           || 0), color: '#a78bfa' },
+    { label: 'Wastage',           val: parseFloat(d.wastage_cost         || 0), color: 'var(--orange)' },
+    { label: 'Refinery Adj.',     val: parseFloat(d.refinery_adjustment  || 0), color: '#f59e0b' },
+    { label: 'Overhead',          val: parseFloat(d.overhead_cost        || 0), color: 'var(--text-muted)' },
+  ].filter(i => Math.abs(i.val) > 0);
+
+  document.getElementById('breakdownPanel').innerHTML = items.map(i => {
+    const pct = total > 0 ? Math.abs(i.val) / total * 100 : 0;
+    return `<div style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px">
+        <span style="color:${i.color};font-weight:600">${i.label}</span>
+        <span>${fmtCur(i.val)} <span class="text-muted">(${pct.toFixed(1)}%)</span></span>
+      </div>
+      <div style="height:4px;background:var(--border);border-radius:2px">
+        <div style="width:${pct.toFixed(1)}%;height:100%;background:${i.color};border-radius:2px"></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Profit analysis panel
+  const sale   = parseFloat(d.sale_price  || 0);
+  const profit = parseFloat(d.profit_loss || 0);
+  const margin = parseFloat(d.margin_pct  || 0);
+  const profitColor = profit >= 0 ? 'var(--green)' : 'var(--red)';
+
+  document.getElementById('profitAnalysisPanel').innerHTML = `
+    <div class="detail-row">
+      <span class="detail-label">Total Cost</span>
+      <span class="detail-value text-orange">${fmtCur(total)}</span>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:16px">
-      <div class="metric-card"><div class="metric-label">Total Cost</div><div class="metric-value text-orange" id="c_total">${fmtCur(existing.total_cost||0)}</div></div>
-      <div class="metric-card"><div class="metric-label">Sale Price</div><div class="metric-value text-gold" id="c_sale">${fmtCur(existing.sale_price||0)}</div></div>
-      <div class="metric-card"><div class="metric-label">Profit / Loss</div><div class="metric-value ${(existing.profit_loss||0)>=0?'text-green':'text-red'}" id="c_profit">${fmtCur(existing.profit_loss||0)}</div></div>
-      <div class="metric-card"><div class="metric-label">Margin</div><div class="metric-value text-green" id="c_margin">${existing.sale_price?fmtPct((existing.profit_loss/existing.sale_price)*100):'—'}</div></div>
+    <div class="detail-row">
+      <span class="detail-label">Sale Price</span>
+      <span class="detail-value text-gold">${fmtCur(sale)}</span>
+    </div>
+    <div style="border-top:1px solid var(--border);margin:8px 0"></div>
+    <div class="detail-row">
+      <span class="detail-label">Profit / Loss</span>
+      <span class="detail-value bold" style="color:${profitColor};font-size:16px">${fmtCur(profit)}</span>
+    </div>
+    <div class="detail-row">
+      <span class="detail-label">Margin</span>
+      <span class="detail-value bold" style="color:${profitColor}">${margin.toFixed(2)}%</span>
+    </div>
+    <div style="margin-top:10px;height:6px;background:var(--border);border-radius:3px">
+      <div style="width:${Math.min(100,Math.abs(margin)).toFixed(1)}%;height:100%;
+                  background:${profitColor};border-radius:3px"></div>
+    </div>
+    <div class="text-xs text-muted" style="margin-top:4px;text-align:right">
+      ${margin >= 30 ? '🟢 Excellent' : margin >= 15 ? '🟡 Good' : margin >= 0 ? '🟠 Low' : '🔴 Loss'}
     </div>`;
 }
-function calcTotal() {
-  const fields = ['gold_cost','labour_cost','stone_cost','wastage_cost','refinery_adjustment','overhead_cost'];
-  const total = fields.reduce((sum,f)=>sum+parseFloat(document.getElementById('c_'+f).value||0),0);
-  const sale = parseFloat(document.getElementById('c_sale_price')?.value||document.getElementById('c_sale_price')?.textContent||0);
-  document.getElementById('c_total').textContent = fmtCur(total);
-}
+
+// ── Save cost ──────────────────────────────────────────────────────────────────
 async function saveCost() {
-  const b={job_id:selectedJobId,gold_cost:parseFloat(document.getElementById('c_gold_cost').value)||0,labour_cost:parseFloat(document.getElementById('c_labour_cost').value)||0,stone_cost:parseFloat(document.getElementById('c_stone_cost').value)||0,wastage_cost:parseFloat(document.getElementById('c_wastage_cost').value)||0,refinery_adjustment:parseFloat(document.getElementById('c_refinery_adjustment').value)||0,overhead_cost:parseFloat(document.getElementById('c_overhead_cost').value)||0,sale_price:parseFloat(document.getElementById('c_sale_price').value)||0};
-  try{const r=await API.post('/api/v1/costing/calculate',b);showToast(`Saved. Profit: ${fmtCur(r.profit_loss)}`);selectJob(selectedJobId,'');}catch(e){showToast(e.message,'error');}
+  if (!selectedJobId) return;
+  const btn = document.getElementById('saveBtn');
+  btn.disabled = true; btn.textContent = 'Saving...';
+  try {
+    const r = await API.post('/api/v1/costing/calculate', {
+      job_id:              selectedJobId,
+      gold_weight_used:    g('c_gold_weight'),
+      gold_rate:           g('c_gold_rate'),
+      labour_cost:         g('c_labour_cost'),
+      stone_cost:          g('c_stone_cost'),
+      wastage_cost:        g('c_wastage_cost'),
+      refinery_adjustment: g('c_refinery_adjustment'),
+      overhead_cost:       g('c_overhead_cost'),
+      sale_price:          g('c_sale_price'),
+    });
+    showToast(`Saved ✓ — Profit: ${fmtCur(r.profit_loss)} (${r.margin_pct}%)`);
+    updateKPIs(r);
+    renderBreakdown(r);
+  } catch(e) {
+    showToast(e.message || 'Save failed', 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = '💾 Save Cost';
+  }
 }
+
+// ── Profitability report ───────────────────────────────────────────────────────
+async function loadProfitability() {
+  try {
+    const data = await API.get('/api/v1/costing/profitability');
+    document.getElementById('profCount').textContent =
+      `${data.length} job${data.length !== 1 ? 's' : ''}`;
+
+    // Summary KPIs
+    const totalRev  = data.reduce((s, c) => s + parseFloat(c.sale_price  || 0), 0);
+    const totalCost = data.reduce((s, c) => s + parseFloat(c.total_cost  || 0), 0);
+    const totalProf = data.reduce((s, c) => s + parseFloat(c.profit_loss || 0), 0);
+    const avgMargin = data.length
+      ? data.reduce((s, c) => s + parseFloat(c.margin_pct || 0), 0) / data.length
+      : 0;
+
+    document.getElementById('pRevenue').textContent = fmtCur(totalRev);
+    document.getElementById('pCost').textContent    = fmtCur(totalCost);
+    document.getElementById('pProfit').textContent  = fmtCur(totalProf);
+    document.getElementById('pMargin').textContent  = avgMargin.toFixed(2) + '%';
+    document.getElementById('pProfit').className    = 'metric-value ' + (totalProf >= 0 ? 'text-green' : 'text-red');
+
+    // Enrich with job codes
+    const jobMap = {};
+    allJobs.forEach(j => { jobMap[j.id] = j; });
+
+    document.getElementById('profitBody').innerHTML = data.length
+      ? data
+          .sort((a, b) => parseFloat(b.margin_pct) - parseFloat(a.margin_pct))
+          .map(c => {
+            const job     = jobMap[c.job_id] || {};
+            const profit  = parseFloat(c.profit_loss || 0);
+            const margin  = parseFloat(c.margin_pct  || 0);
+            const pColor  = profit >= 0 ? 'var(--green)' : 'var(--red)';
+            const mColor  = margin >= 20 ? 'var(--green)' : margin >= 0 ? 'var(--gold)' : 'var(--red)';
+            const other   = parseFloat(c.total_cost || 0) - parseFloat(c.gold_cost || 0) - parseFloat(c.labour_cost || 0);
+            return `<tr>
+              <td class="text-gold bold" style="font-family:monospace">${job.job_code || '#' + c.job_id}</td>
+              <td class="text-muted">${job.customer_name || '—'}</td>
+              <td style="font-family:monospace">${fmtCur(c.gold_cost   || 0)}</td>
+              <td style="font-family:monospace">${fmtCur(c.labour_cost || 0)}</td>
+              <td style="font-family:monospace">${fmtCur(other)}</td>
+              <td style="font-family:monospace;font-weight:600">${fmtCur(c.total_cost)}</td>
+              <td class="text-gold" style="font-family:monospace">${fmtCur(c.sale_price)}</td>
+              <td style="font-family:monospace;font-weight:600;color:${pColor}">${fmtCur(profit)}</td>
+              <td style="font-weight:700;color:${mColor}">${margin.toFixed(2)}%</td>
+            </tr>`;
+          }).join('')
+      : '<tr><td colspan="9" class="empty-state">No cost data yet — add costs from the Calculator tab</td></tr>';
+  } catch(e) {
+    showToast('Failed to load profitability data', 'error');
+  }
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────────
 loadJobList();
 </script>
 {% endblock %}

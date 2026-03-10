@@ -146,7 +146,7 @@ Leave everything else as-is for development.
 python setup_passwords.py
 ```
 
-This sets all user passwords to `admin123`.
+
 
 ---
 
@@ -174,20 +174,11 @@ INFO:     Uvicorn running on http://0.0.0.0:8000
 | http://localhost:8000/login | Login |
 | http://localhost:8000/docs | Swagger API Docs |
 
-**Default Login:** `admin` / `admin123`
+
 
 ---
 
-## 👤 All Login Credentials
 
-| Username | Password | Role |
-|----------|----------|------|
-| admin    | admin123 | Admin (full access) |
-| ravi     | admin123 | Production Manager |
-| suresh   | admin123 | Department Operator |
-| metalm   | admin123 | Metal Store Manager |
-| priya    | admin123 | Accountant |
-| qcraj    | admin123 | QC Officer |
 
 ---
 

@@ -1,103 +1,693 @@
 {% extends "base.html" %}
 {% block title %}Inventory{% endblock %}
 {% block page_title %}Inventory{% endblock %}
-{% block page_subtitle %}RAW, WIP & FINISHED GOODS{% endblock %}
+{% block page_subtitle %}RAW MATERIALS · WIP TRACKING · STOCK LEVELS · MOVEMENTS{% endblock %}
+
 {% block content %}
-<div class="toolbar" style="margin-bottom:16px;background:#13110e;border:1px solid #2a2318;border-radius:8px">
-  <div class="toolbar-left">
-    <div class="tab-group">
-      <button class="tab active" data-cat="">All</button>
-      <button class="tab" data-cat="Gold">Gold</button>
-      <button class="tab" data-cat="Silver">Silver</button>
-      <button class="tab" data-cat="Stone">Stone</button>
-      <button class="tab" data-cat="Consumable">Consumable</button>
-      <button class="tab" data-cat="Finished Good">Finished</button>
+
+<!-- METRIC STRIP -->
+<div class="metric-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px">
+  <div class="metric-card">
+    <div class="metric-label">Total Items</div>
+    <div class="metric-value text-gold" id="kTotal">—</div>
+    <div class="metric-sub">Active items</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">Low Stock</div>
+    <div class="metric-value" style="color:var(--red)" id="kLow">—</div>
+    <div class="metric-sub">Below reorder level</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">Categories</div>
+    <div class="metric-value" style="color:var(--blue)" id="kCats">—</div>
+    <div class="metric-sub">Item types</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">Stock Value</div>
+    <div class="metric-value text-green" id="kValue">—</div>
+    <div class="metric-sub">Total inventory value</div>
+  </div>
+</div>
+
+<!-- MAIN MODE TABS -->
+<div class="tab-group" style="margin-bottom:14px">
+  <button class="tab active" id="modeRaw" onclick="setMode('raw',this)">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:5px"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>Raw Materials
+  </button>
+  <button class="tab" id="modeWip" onclick="setMode('wip',this)">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:5px"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>WIP — Jobs In Production
+  </button>
+</div>
+
+<!-- TOOLBAR -->
+<div class="toolbar" style="margin-bottom:16px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px">
+  <!-- Raw mode toolbar -->
+  <div id="rawToolbar" style="display:contents">
+    <div class="toolbar-left">
+      <div class="tab-group" id="catTabs">
+        <button class="tab active" onclick="setCat('',this)">All</button>
+        <button class="tab" onclick="setCat('Gold',this)">Gold</button>
+        <button class="tab" onclick="setCat('Silver',this)">Silver</button>
+        <button class="tab" onclick="setCat('Stone',this)">Stone</button>
+        <button class="tab" onclick="setCat('Consumable',this)">Consumable</button>
+        <button class="tab" onclick="setCat('Other',this)">Other</button>
+      </div>
+    </div>
+    <div class="toolbar-right">
+      <label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-muted);cursor:pointer">
+        <input type="checkbox" id="lowStockOnly" onchange="loadInventory()"> Low stock only
+      </label>
+      <input id="invSearch" class="search-input" placeholder="Search item..." oninput="filterItems()">
+      {% if user.role.name in ['Admin', 'Production Manager', 'Metal Store Manager'] %}
+      <button class="btn btn-secondary btn-sm" onclick="openAdjustModal()">± Adjust Stock</button>
+      <button class="btn btn-primary btn-sm" onclick="openModal('newItemModal')">+ Add Item</button>
+      {% endif %}
     </div>
   </div>
-  <div class="toolbar-right">
-    <button class="btn btn-secondary btn-sm" onclick="openModal('adjustModal')">Adjust Stock</button>
-    <button class="btn btn-primary btn-sm" onclick="openModal('newItemModal')">+ Add Item</button>
+  <!-- WIP mode toolbar -->
+  <div id="wipToolbar" style="display:none;width:100%;padding:10px 14px;align-items:center;gap:10px">
+    <div class="toolbar-left" style="gap:8px">
+      <select id="wipStatus" class="form-control" style="width:140px;height:32px;font-size:11px" onchange="loadWIP()">
+        <option value="">All Active</option>
+        <option value="New">New</option>
+        <option value="Active">Active</option>
+        <option value="QC Pending">QC Pending</option>
+        <option value="On Hold">On Hold</option>
+      </select>
+      <select id="wipMetal" class="form-control" style="width:120px;height:32px;font-size:11px" onchange="loadWIP()">
+        <option value="">All Metals</option>
+        <option value="24K">24K Gold</option>
+        <option value="22K">22K Gold</option>
+        <option value="18K">18K Gold</option>
+        <option value="Silver">Silver</option>
+      </select>
+      <select id="wipStage" class="form-control" style="width:140px;height:32px;font-size:11px" onchange="loadWIP()">
+        <option value="">All Stages</option>
+      </select>
+    </div>
+    <div class="toolbar-right">
+      <input id="wipSearch" class="search-input" placeholder="Search job code, design..." oninput="filterWIP()">
+      <span id="wipCount" class="text-muted text-xs"></span>
+    </div>
   </div>
 </div>
 
-<div class="card">
-  <table class="data-table">
-    <thead><tr><th>Code</th><th>Name</th><th>Category</th><th>Unit</th><th>Current Stock</th><th>Reorder Level</th><th>Status</th></tr></thead>
-    <tbody id="inventoryBody"><tr><td colspan="7" class="empty-state">Loading...</td></tr></tbody>
-  </table>
+<!-- WIP VIEW (shown in WIP mode) -->
+<div id="wipView" style="display:none">
+  <!-- WIP KPI row -->
+  <div class="metric-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:14px" id="wipKpis">
+    <div class="metric-card">
+      <div class="metric-label">In Production</div>
+      <div class="metric-value text-gold" id="wkTotal">—</div>
+      <div class="metric-sub">Active jobs</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Target Weight</div>
+      <div class="metric-value text-orange" id="wkWeight">—</div>
+      <div class="metric-sub">Total grams in WIP</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">On Hold</div>
+      <div class="metric-value" style="color:var(--red)" id="wkHold">—</div>
+      <div class="metric-sub">Requires attention</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">QC Pending</div>
+      <div class="metric-value" style="color:var(--blue)" id="wkQc">—</div>
+      <div class="metric-sub">Awaiting approval</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Overdue</div>
+      <div class="metric-value" style="color:var(--red)" id="wkOverdue">—</div>
+      <div class="metric-sub">Past delivery date</div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Work In Progress Register</span>
+      <span class="text-xs text-muted" id="wipCount2"></span>
+    </div>
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Job Code</th>
+            <th>Design</th>
+            <th>Customer</th>
+            <th>Metal</th>
+            <th>Target Wt</th>
+            <th>Current Stage</th>
+            <th>Status</th>
+            <th>Priority</th>
+            <th>Expected Delivery</th>
+            <th>Days Elapsed</th>
+          </tr>
+        </thead>
+        <tbody id="wipBody">
+          <tr><td colspan="10" class="empty-state">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
 </div>
 
+<!-- MAIN LAYOUT (Raw mode) -->
+<div id="rawView" style="display:grid;grid-template-columns:1fr 270px;gap:14px">
+
+  <!-- TABLE -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Inventory Register</span>
+      <span class="text-xs text-muted" id="invCount"></span>
+    </div>
+    <div class="table-wrapper">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Code</th>
+            <th>Name</th>
+            <th>Category</th>
+            <th>Unit</th>
+            <th>Current Stock</th>
+            <th>Reorder Level</th>
+            <th>Unit Cost</th>
+            <th>Stock Value</th>
+            <th>Status</th>
+            {% if user.role.name in ['Admin', 'Production Manager', 'Metal Store Manager'] %}
+            <th>Action</th>
+            {% endif %}
+          </tr>
+        </thead>
+        <tbody id="inventoryBody">
+          <tr><td colspan="10" class="empty-state">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div style="display:flex;flex-direction:column;gap:14px">
+
+    <!-- Low stock alerts -->
+    <div class="card">
+      <div class="card-header"><span class="card-title">⚠ Low Stock Alerts</span></div>
+      <div id="lowStockPanel" class="card-body">
+        <div class="empty-state text-xs">Loading...</div>
+      </div>
+    </div>
+
+    <!-- Selected item detail -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Item Detail</span>
+        <button class="btn btn-secondary btn-sm hidden" id="adjustFromDetail" onclick="openAdjustForSelected()">± Adjust</button>
+      </div>
+      <div id="itemDetail" class="card-body">
+        <div class="text-muted text-xs" style="padding:4px">Click a row to view details</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ════════════════ MODALS ════════════════ -->
+
+<!-- ADD ITEM -->
 <div class="modal-overlay hidden" id="newItemModal">
-  <div class="modal">
-    <div class="modal-header"><span class="modal-title">Add Inventory Item</span><button class="modal-close" onclick="closeModal('newItemModal')">×</button></div>
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header">
+      <span class="modal-title">Add Inventory Item</span>
+      <button class="modal-close" onclick="closeModal('newItemModal')">×</button>
+    </div>
     <div class="modal-body">
       <div class="form-row">
-        <div class="form-group"><label class="form-label">Name *</label><input id="ni_name" class="form-control"></div>
-        <div class="form-group"><label class="form-label">Category *</label><select id="ni_cat" class="form-control"><option value="Gold">Gold</option><option value="Silver">Silver</option><option value="Stone">Stone</option><option value="Consumable">Consumable</option><option value="WIP">WIP</option><option value="Finished Good">Finished Good</option></select></div>
+        <div class="form-group">
+          <label class="form-label">Item Name *</label>
+          <input id="ni_name" class="form-control" placeholder="e.g. Diamond 0.5ct">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Category *</label>
+          <select id="ni_cat" class="form-control">
+            <option value="Gold">Gold</option>
+            <option value="Silver">Silver</option>
+            <option value="Stone">Stone</option>
+            <option value="Consumable">Consumable</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
       </div>
       <div class="form-row">
-        <div class="form-group"><label class="form-label">Unit</label><input id="ni_unit" class="form-control" placeholder="g / pcs / ml"></div>
-        <div class="form-group"><label class="form-label">Reorder Level</label><input id="ni_reorder" type="number" step="0.01" class="form-control" value="0"></div>
+        <div class="form-group">
+          <label class="form-label">Unit *</label>
+          <input id="ni_unit" class="form-control" placeholder="g / pcs / ml / ct">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Unit Cost (₹)</label>
+          <input id="ni_unit_cost" type="number" step="0.01" min="0" class="form-control" value="0">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Reorder Level</label>
+        <input id="ni_reorder" type="number" step="0.001" min="0" class="form-control" value="0">
       </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('newItemModal')">Cancel</button>
-      <button class="btn btn-primary" onclick="submitItem()">Add Item</button>
+      <button class="btn btn-primary" id="addItemBtn" onclick="submitItem()">+ Add Item</button>
     </div>
   </div>
 </div>
 
+<!-- ADJUST STOCK -->
 <div class="modal-overlay hidden" id="adjustModal">
-  <div class="modal">
-    <div class="modal-header"><span class="modal-title">Adjust Stock</span><button class="modal-close" onclick="closeModal('adjustModal')">×</button></div>
+  <div class="modal" style="max-width:440px">
+    <div class="modal-header">
+      <span class="modal-title">Adjust Stock</span>
+      <button class="modal-close" onclick="closeModal('adjustModal')">×</button>
+    </div>
     <div class="modal-body">
-      <div class="form-group"><label class="form-label">Item</label><select id="adj_item" class="form-control"></select></div>
-      <div class="form-row">
-        <div class="form-group"><label class="form-label">Type</label><select id="adj_type" class="form-control"><option value="In">Stock In</option><option value="Out">Stock Out</option><option value="Adjust">Adjust (Set)</option></select></div>
-        <div class="form-group"><label class="form-label">Quantity</label><input id="adj_qty" type="number" step="0.001" class="form-control"></div>
+      <div class="form-group">
+        <label class="form-label">Item *</label>
+        <select id="adj_item" class="form-control" onchange="showAdjCurrentStock()">
+          <option value="">Select item...</option>
+        </select>
       </div>
-      <div class="form-group"><label class="form-label">Notes</label><textarea id="adj_notes" class="form-control" rows="2"></textarea></div>
+      <!-- Current stock display -->
+      <div id="adjCurrentStock" style="background:#13110e;border:1px solid #2a2318;border-radius:5px;padding:8px 12px;margin-bottom:12px;font-size:11px;display:none">
+        Current stock: <span class="text-gold bold" id="adjStockVal">—</span>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Transaction Type *</label>
+          <select id="adj_type" class="form-control">
+            <option value="Purchase">Purchase (Stock In)</option>
+            <option value="Return">Return (Stock In)</option>
+            <option value="Issue">Issue (Stock Out)</option>
+            <option value="Scrap">Scrap (Stock Out)</option>
+            <option value="Adjust">Manual Adjust (Set)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Quantity *</label>
+          <input id="adj_qty" type="number" step="0.001" min="0.001" class="form-control" placeholder="0.000">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Unit Cost (₹) <span class="text-muted text-xs">optional</span></label>
+        <input id="adj_cost" type="number" step="0.01" min="0" class="form-control" placeholder="Leave blank to use item default">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes</label>
+        <textarea id="adj_notes" class="form-control" rows="2" placeholder="Reason for adjustment..."></textarea>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('adjustModal')">Cancel</button>
-      <button class="btn btn-primary" onclick="submitAdjust()">Update Stock</button>
+      <button class="btn btn-primary" id="adjBtn" onclick="submitAdjust()">Update Stock</button>
     </div>
   </div>
 </div>
+
 {% endblock %}
+
 {% block extra_js %}
 <script>
-let currentCat = '';
+// ── State ──────────────────────────────────────────────────────────────────────
+let currentCat    = '';
+let allItems      = [];
+let selectedItem  = null;
+
+// ── Category tabs ──────────────────────────────────────────────────────────────
+function setCat(cat, btn) {
+  document.querySelectorAll('#catTabs .tab').forEach(t => t.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  currentCat = cat;
+  loadInventory();
+}
+
+// ── Load inventory ─────────────────────────────────────────────────────────────
 async function loadInventory() {
-  const url = '/api/v1/inventory/' + (currentCat ? `?category=${encodeURIComponent(currentCat)}` : '');
-  const data = await API.get(url);
-  document.getElementById('inventoryBody').innerHTML = data.map(i=>`
-    <tr><td class="text-gold">${i.code}</td><td class="bold">${i.name}</td>
-    <td><span class="badge badge-gray">${i.category}</span></td>
-    <td class="text-muted">${i.unit}</td>
-    <td class="${i.low_stock?'text-orange':'text-green'}">${parseFloat(i.stock).toFixed(3)}</td>
-    <td class="text-muted">${parseFloat(i.reorder).toFixed(3)}</td>
-    <td><span class="badge ${i.low_stock?'badge-red':'badge-green'}">${i.low_stock?'Low Stock':'OK'}</span></td></tr>`).join('') ||
-    '<tr><td colspan="7" class="empty-state">No items</td></tr>';
+  const lowOnly = document.getElementById('lowStockOnly').checked;
+  const params  = [];
+  if (currentCat) params.push(`category=${encodeURIComponent(currentCat)}`);
+  if (lowOnly)    params.push('low_stock_only=true');
+  const url = '/api/v1/inventory/' + (params.length ? '?' + params.join('&') : '');
+
+  try {
+    allItems = await API.get(url);
+    renderItems(allItems);
+    updateKPIs(allItems);
+    renderLowStockPanel(allItems.filter(i => i.low_stock));
+  } catch(e) {
+    document.getElementById('inventoryBody').innerHTML =
+      `<tr><td colspan="10" class="empty-state">Error: ${e.message}</td></tr>`;
+    showToast('Failed to load inventory', 'error');
+  }
 }
-document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
-  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
-  t.classList.add('active'); currentCat=t.dataset.cat; loadInventory();
-}));
+
+// ── Render table ───────────────────────────────────────────────────────────────
+const CAT_COLOR = {
+  Gold: 'badge-gold', Silver: 'badge-gray', Stone: 'badge-purple',
+  Consumable: 'badge-blue', Other: 'badge-gray'
+};
+
+function renderItems(items) {
+  document.getElementById('invCount').textContent =
+    `${items.length} item${items.length !== 1 ? 's' : ''}`;
+
+  {% if user.role.name in ['Admin', 'Production Manager', 'Metal Store Manager'] %}
+  const canEdit = true;
+  {% else %}
+  const canEdit = false;
+  {% endif %}
+
+  document.getElementById('inventoryBody').innerHTML = items.length
+    ? items.map(i => {
+        const stock   = parseFloat(i.current_stock) || 0;
+        const reorder = parseFloat(i.reorder_level)  || 0;
+        const cost    = parseFloat(i.unit_cost)       || 0;
+        const val     = stock * cost;
+        const low     = i.low_stock;
+        return `<tr style="cursor:pointer" onclick="showDetail(${i.id})">
+          <td class="text-gold bold" style="font-family:monospace">${i.item_code}</td>
+          <td class="bold">${i.name}</td>
+          <td><span class="badge ${CAT_COLOR[i.category] || 'badge-gray'}">${i.category}</span></td>
+          <td class="text-muted">${i.unit}</td>
+          <td style="font-family:monospace;font-weight:600;color:${low ? 'var(--orange)' : 'var(--green)'}">
+            ${stock.toFixed(3)} ${i.unit}
+          </td>
+          <td class="text-muted" style="font-family:monospace">${reorder.toFixed(3)}</td>
+          <td class="text-muted">${fmtCur(cost)}</td>
+          <td style="font-family:monospace">${fmtCur(val)}</td>
+          <td><span class="badge ${low ? 'badge-red' : 'badge-green'}">${low ? 'Low Stock' : 'OK'}</span></td>
+          ${canEdit ? `<td>
+            <button class="btn btn-secondary btn-sm"
+              onclick="event.stopPropagation();openAdjustFor(${i.id})">± Adjust</button>
+          </td>` : ''}
+        </tr>`;
+      }).join('')
+    : '<tr><td colspan="10" class="empty-state">No items found</td></tr>';
+}
+
+// ── KPIs ───────────────────────────────────────────────────────────────────────
+function updateKPIs(items) {
+  const low  = items.filter(i => i.low_stock).length;
+  const cats = new Set(items.map(i => i.category)).size;
+  const val  = items.reduce((s, i) =>
+    s + (parseFloat(i.current_stock) || 0) * (parseFloat(i.unit_cost) || 0), 0);
+  document.getElementById('kTotal').textContent = items.length;
+  document.getElementById('kLow').textContent   = low;
+  document.getElementById('kCats').textContent  = cats;
+  document.getElementById('kValue').textContent = fmtCur(val);
+}
+
+// ── Low stock panel ────────────────────────────────────────────────────────────
+function renderLowStockPanel(lowItems) {
+  document.getElementById('lowStockPanel').innerHTML = lowItems.length
+    ? lowItems.map(i => {
+        const pct = parseFloat(i.reorder_level) > 0
+          ? Math.min(100, Math.round(parseFloat(i.current_stock) / parseFloat(i.reorder_level) * 100))
+          : 0;
+        return `<div style="padding:8px 0;border-bottom:1px solid var(--border-light)">
+          <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px">
+            <span class="bold">${i.name}</span>
+            <span style="color:var(--orange)">${parseFloat(i.current_stock).toFixed(3)} ${i.unit}</span>
+          </div>
+          <div style="height:3px;background:var(--border);border-radius:2px">
+            <div style="width:${pct}%;height:100%;background:var(--orange);border-radius:2px"></div>
+          </div>
+          <div class="text-xs text-muted" style="margin-top:2px">Reorder: ${parseFloat(i.reorder_level).toFixed(3)}</div>
+        </div>`;
+      }).join('')
+    : '<div class="text-xs text-muted" style="padding:4px">All items within stock levels ✓</div>';
+}
+
+// ── Search filter ──────────────────────────────────────────────────────────────
+function filterItems() {
+  const q = document.getElementById('invSearch').value.toLowerCase();
+  const filtered = q
+    ? allItems.filter(i =>
+        i.name.toLowerCase().includes(q) ||
+        i.item_code.toLowerCase().includes(q) ||
+        (i.category || '').toLowerCase().includes(q))
+    : allItems;
+  document.getElementById('invCount').textContent = `${filtered.length} of ${allItems.length}`;
+  renderItems(filtered);
+}
+
+// ── Item detail panel ──────────────────────────────────────────────────────────
+function showDetail(itemId) {
+  const i = allItems.find(x => x.id === itemId);
+  if (!i) return;
+  selectedItem = i;
+  document.getElementById('adjustFromDetail').classList.remove('hidden');
+
+  const stock = parseFloat(i.current_stock) || 0;
+  const cost  = parseFloat(i.unit_cost)     || 0;
+
+  document.getElementById('itemDetail').innerHTML = [
+    ['Code',         `<span class="text-gold bold" style="font-family:monospace">${i.item_code}</span>`],
+    ['Name',         `<span class="bold">${i.name}</span>`],
+    ['Category',     `<span class="badge ${CAT_COLOR[i.category] || 'badge-gray'}">${i.category}</span>`],
+    ['Unit',         i.unit],
+    ['Current Stock', `<span style="font-family:monospace;color:${i.low_stock ? 'var(--orange)' : 'var(--green)'};font-weight:600">${stock.toFixed(4)} ${i.unit}</span>`],
+    ['Reorder Level', `<span style="font-family:monospace">${parseFloat(i.reorder_level).toFixed(4)}</span>`],
+    ['Unit Cost',    fmtCur(cost)],
+    ['Stock Value',  `<span class="text-gold">${fmtCur(stock * cost)}</span>`],
+    ['Status',       `<span class="badge ${i.low_stock ? 'badge-red' : 'badge-green'}">${i.low_stock ? 'Low Stock' : 'In Stock'}</span>`],
+  ].map(([label, val]) => `
+    <div class="detail-row">
+      <span class="detail-label">${label}</span>
+      <span class="detail-value">${val}</span>
+    </div>`).join('');
+}
+
+function openAdjustForSelected() {
+  if (selectedItem) openAdjustFor(selectedItem.id);
+}
+
+// ── Add item ───────────────────────────────────────────────────────────────────
 async function submitItem() {
-  const b={name:document.getElementById('ni_name').value,category:document.getElementById('ni_cat').value,unit:document.getElementById('ni_unit').value||'pcs',reorder_level:parseFloat(document.getElementById('ni_reorder').value)||0};
-  try{await API.post('/api/v1/inventory/',b);showToast('Item added');closeModal('newItemModal');loadInventory();}catch(e){showToast(e.message,'error');}
+  const name = document.getElementById('ni_name').value.trim();
+  const unit = document.getElementById('ni_unit').value.trim();
+  if (!name) return showToast('Item name required', 'error');
+  if (!unit) return showToast('Unit required', 'error');
+
+  const btn = document.getElementById('addItemBtn');
+  btn.disabled = true; btn.textContent = 'Adding...';
+  try {
+    const r = await API.post('/api/v1/inventory/', {
+      name,
+      category:     document.getElementById('ni_cat').value,
+      unit,
+      unit_cost:    parseFloat(document.getElementById('ni_unit_cost').value) || 0,
+      reorder_level: parseFloat(document.getElementById('ni_reorder').value)  || 0,
+    });
+    showToast(`Item "${r.item_code}" added`);
+    closeModal('newItemModal');
+    ['ni_name','ni_unit'].forEach(id => { document.getElementById(id).value = ''; });
+    document.getElementById('ni_unit_cost').value = '0';
+    document.getElementById('ni_reorder').value   = '0';
+    loadInventory();
+  } catch(e) {
+    showToast(e.message || 'Add failed', 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = '+ Add Item';
+  }
 }
-async function openAdjust() {
-  const data=await API.get('/api/v1/inventory/');
-  document.getElementById('adj_item').innerHTML=data.map(i=>`<option value="${i.id}">${i.name} (${i.code})</option>`).join('');
+
+// ── Adjust stock ───────────────────────────────────────────────────────────────
+async function openAdjustModal() {
+  populateAdjustSelect(null);
   openModal('adjustModal');
 }
-async function submitAdjust() {
-  const b={item_id:parseInt(document.getElementById('adj_item').value),transaction_type:document.getElementById('adj_type').value,quantity:parseFloat(document.getElementById('adj_qty').value),notes:document.getElementById('adj_notes').value||null};
-  try{const r=await API.post('/api/v1/inventory/adjust',b);showToast(`Stock updated. Balance: ${r.new_balance}`);closeModal('adjustModal');loadInventory();}catch(e){showToast(e.message,'error');}
+
+async function openAdjustFor(itemId) {
+  populateAdjustSelect(itemId);
+  openModal('adjustModal');
 }
-document.querySelector('.btn-secondary.btn-sm').onclick=openAdjust;
+
+function populateAdjustSelect(selectedId) {
+  document.getElementById('adj_item').innerHTML =
+    '<option value="">Select item...</option>' +
+    allItems.map(i =>
+      `<option value="${i.id}"
+        data-stock="${i.current_stock}"
+        data-unit="${i.unit}"
+        ${selectedId && i.id === selectedId ? 'selected' : ''}>
+        ${i.name} (${i.item_code}) — ${parseFloat(i.current_stock).toFixed(3)} ${i.unit}
+      </option>`
+    ).join('');
+  document.getElementById('adj_qty').value   = '';
+  document.getElementById('adj_cost').value  = '';
+  document.getElementById('adj_notes').value = '';
+  document.getElementById('adjCurrentStock').style.display = 'none';
+  if (selectedId) showAdjCurrentStock();
+}
+
+function showAdjCurrentStock() {
+  const sel = document.getElementById('adj_item');
+  const opt = sel.options[sel.selectedIndex];
+  if (!opt.value) {
+    document.getElementById('adjCurrentStock').style.display = 'none';
+    return;
+  }
+  const stock = parseFloat(opt.dataset.stock || 0);
+  const unit  = opt.dataset.unit || '';
+  document.getElementById('adjStockVal').textContent = `${stock.toFixed(4)} ${unit}`;
+  document.getElementById('adjCurrentStock').style.display = 'block';
+}
+
+async function submitAdjust() {
+  const itemId = parseInt(document.getElementById('adj_item').value);
+  const qty    = parseFloat(document.getElementById('adj_qty').value);
+  if (!itemId)       return showToast('Select an item', 'error');
+  if (!qty || qty <= 0) return showToast('Enter a valid quantity', 'error');
+
+  const btn = document.getElementById('adjBtn');
+  btn.disabled = true; btn.textContent = 'Updating...';
+  try {
+    const r = await API.post('/api/v1/inventory/adjust', {
+      item_id:          itemId,
+      transaction_type: document.getElementById('adj_type').value,
+      quantity:         qty,
+      unit_cost:        parseFloat(document.getElementById('adj_cost').value) || null,
+      notes:            document.getElementById('adj_notes').value || null,
+    });
+    showToast(`Stock updated — New balance: ${parseFloat(r.new_balance).toFixed(4)}`);
+    closeModal('adjustModal');
+    loadInventory();
+  } catch(e) {
+    showToast(e.message || 'Adjust failed', 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Update Stock';
+  }
+}
+
+// ── Mode switching ─────────────────────────────────────────────────────────────
+let currentMode = 'raw';
+
+function setMode(mode, btn) {
+  currentMode = mode;
+  document.querySelectorAll('.tab[id^="mode"]').forEach(t => t.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+
+  if (mode === 'raw') {
+    document.getElementById('rawView').style.display     = 'grid';
+    document.getElementById('wipView').style.display     = 'none';
+    document.getElementById('rawToolbar').style.display  = 'contents';
+    document.getElementById('wipToolbar').style.display  = 'none';
+    loadInventory();
+  } else {
+    document.getElementById('rawView').style.display     = 'none';
+    document.getElementById('wipView').style.display     = 'block';
+    document.getElementById('rawToolbar').style.display  = 'none';
+    document.getElementById('wipToolbar').style.display  = 'flex';
+    loadWIP();
+    loadDeptStageFilter();
+  }
+}
+
+// ── WIP Logic ─────────────────────────────────────────────────────────────────
+let allWIP = [];
+
+async function loadDeptStageFilter() {
+  try {
+    const depts = await API.get('/api/v1/departments/');
+    const sel = document.getElementById('wipStage');
+    sel.innerHTML = '<option value="">All Stages</option>' +
+      depts.map(d => `<option value="${d.name}">${d.name}</option>`).join('');
+  } catch(e) {}
+}
+
+async function loadWIP() {
+  const status = document.getElementById('wipStatus').value;
+  const metal  = document.getElementById('wipMetal').value;
+  const stage  = document.getElementById('wipStage').value;
+
+  const params = ['per_page=500'];
+  if (status) params.push(`status=${encodeURIComponent(status)}`);
+  if (metal)  params.push(`metal_type=${encodeURIComponent(metal)}`);
+  if (stage)  params.push(`stage=${encodeURIComponent(stage)}`);
+
+  try {
+    const res = await API.get('/api/v1/jobs/?' + params.join('&'));
+    // Filter only active/WIP jobs (not completed/dispatched)
+    const excluded = ['Completed', 'Dispatched'];
+    allWIP = (res.items || []).filter(j => !excluded.includes(j.status));
+    renderWIP(allWIP);
+    updateWipKPIs(allWIP);
+  } catch(e) {
+    document.getElementById('wipBody').innerHTML =
+      `<tr><td colspan="10" class="empty-state">Error: ${e.message}</td></tr>`;
+  }
+}
+
+function updateWipKPIs(jobs) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  document.getElementById('wkTotal').textContent   = jobs.length;
+  document.getElementById('wkWeight').textContent  =
+    fmtWt(jobs.reduce((s, j) => s + (j.target_weight||0), 0));
+  document.getElementById('wkHold').textContent    = jobs.filter(j => j.status === 'On Hold').length;
+  document.getElementById('wkQc').textContent      = jobs.filter(j => j.status === 'QC Pending').length;
+  document.getElementById('wkOverdue').textContent = jobs.filter(j => {
+    if (!j.expected_delivery) return false;
+    return new Date(j.expected_delivery) < today;
+  }).length;
+}
+
+function renderWIP(jobs) {
+  document.getElementById('wipCount').textContent  = `${jobs.length} jobs in WIP`;
+  document.getElementById('wipCount2').textContent = `${jobs.length} jobs`;
+  const today = new Date(); today.setHours(0,0,0,0);
+
+  document.getElementById('wipBody').innerHTML = jobs.length
+    ? jobs.map(j => {
+        const created  = j.created_at ? new Date(j.created_at) : null;
+        const elapsed  = created ? Math.floor((Date.now() - created) / 86400000) : '—';
+        const overdue  = j.expected_delivery && new Date(j.expected_delivery) < today;
+        const delivCol = overdue ? 'color:var(--red);font-weight:600' : '';
+        return `<tr onclick="window.location='/jobs'" style="cursor:pointer" title="Click to open Jobs">
+          <td class="text-gold bold" style="font-family:monospace">${j.job_code}</td>
+          <td class="bold">${j.design_name || '—'}</td>
+          <td class="text-muted text-xs">${j.customer_name || '—'}</td>
+          <td>${metalBadge(j.metal_type)}</td>
+          <td style="font-family:monospace">${fmtWt(j.target_weight)}</td>
+          <td>
+            <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;
+                         background:#1a1408;border:1px solid var(--gold-dim,#5a4a1c);
+                         padding:2px 8px;border-radius:10px;color:var(--gold)">
+              ◈ ${j.current_stage || '—'}
+            </span>
+          </td>
+          <td>${statusBadge(j.status)}</td>
+          <td>${priorityBadge(j.priority)}</td>
+          <td style="font-family:monospace;font-size:11px;${delivCol}">
+            ${j.expected_delivery ? fmtDate(j.expected_delivery) : '—'}
+            ${overdue ? ' ⚠' : ''}
+          </td>
+          <td style="font-family:monospace;text-align:center;
+                     color:${elapsed > 30 ? 'var(--orange)' : 'var(--text-muted)'}">
+            ${elapsed !== '—' ? elapsed + 'd' : '—'}
+          </td>
+        </tr>`;
+      }).join('')
+    : '<tr><td colspan="10" class="empty-state">No jobs in production matching filters</td></tr>';
+}
+
+function filterWIP() {
+  const q = document.getElementById('wipSearch').value.toLowerCase();
+  const filtered = q
+    ? allWIP.filter(j =>
+        (j.job_code||'').toLowerCase().includes(q) ||
+        (j.design_name||'').toLowerCase().includes(q) ||
+        (j.customer_name||'').toLowerCase().includes(q))
+    : allWIP;
+  renderWIP(filtered);
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────────
 loadInventory();
 </script>
 {% endblock %}

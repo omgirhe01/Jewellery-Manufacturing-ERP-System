@@ -15,14 +15,16 @@
         <div class="tab-group">
           <button class="tab active" data-status="">All</button>
           <button class="tab" data-status="New">New</button>
-          <button class="tab" data-status="In Progress">Active</button>
+          <button class="tab" data-status="Active">Active</button>
           <button class="tab" data-status="QC Pending">QC</button>
           <button class="tab" data-status="Completed">Done</button>
         </div>
       </div>
       <div class="toolbar-right">
         <input class="search-input" id="searchInput" placeholder="Search job / design...">
+        {% if user.role.name in ['Admin', 'Production Manager'] %}
         <button class="btn btn-primary" onclick="openModal('newJobModal')">+ New Job</button>
+        {% endif %}
       </div>
     </div>
 
@@ -59,7 +61,7 @@
   <!-- DETAIL PANEL -->
   <div class="detail-panel hidden" id="detailPanel" style="padding:18px 16px;min-width:280px;max-width:300px">
     <div class="flex justify-between items-center mb-4">
-      <div class="serif" style="font-size:17px;color:#e8d89a">Job Detail</div>
+      <div class="" style="font-size:17px;color:#e8d89a">Job Detail</div>
       <button class="btn btn-secondary btn-icon" onclick="closeDetail()">×</button>
     </div>
     <div id="detailContent"></div>
@@ -158,6 +160,57 @@
     </div>
   </div>
 </div>
+
+<!-- APPROVE STAGE MODAL -->
+<div class="modal-overlay hidden" id="approveModal">
+  <div class="modal" style="width:420px">
+    <div class="modal-header">
+      <span class="modal-title" style="color:#6dbf8b">✓ Approve Stage</span>
+      <button class="modal-close" onclick="closeModal('approveModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="background:#0e1f14;border:1px solid #2a4a30;border-radius:6px;padding:12px;margin-bottom:14px">
+        <div class="text-xs text-muted" style="margin-bottom:4px">Approving stage for:</div>
+        <div class="text-gold bold" id="approve_jobcode" style="font-size:15px">—</div>
+        <div class="text-xs text-muted" id="approve_stage_name" style="margin-top:2px">—</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">QC Notes / Remarks (optional)</label>
+        <textarea id="approve_notes" class="form-control" rows="3" placeholder="Add quality remarks..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('approveModal')">Cancel</button>
+      <button class="btn btn-primary" style="background:#1a7a40;border-color:#1a7a40" onclick="submitApprove()">✓ Approve Stage</button>
+    </div>
+  </div>
+</div>
+
+<!-- REJECT STAGE MODAL -->
+<div class="modal-overlay hidden" id="rejectModal">
+  <div class="modal" style="width:420px">
+    <div class="modal-header">
+      <span class="modal-title" style="color:#e07b3b">✗ Reject Stage</span>
+      <button class="modal-close" onclick="closeModal('rejectModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="background:#1f1209;border:1px solid #4a2a0a;border-radius:6px;padding:12px;margin-bottom:14px">
+        <div class="text-xs text-muted" style="margin-bottom:4px">Rejecting stage for:</div>
+        <div class="text-gold bold" id="reject_jobcode" style="font-size:15px">—</div>
+        <div class="text-xs text-muted" id="reject_stage_name" style="margin-top:2px">—</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Rejection Reason <span style="color:#e07b3b">*</span></label>
+        <textarea id="reject_reason" class="form-control" rows="3" placeholder="Describe what failed QC / reason for rejection..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('rejectModal')">Cancel</button>
+      <button class="btn btn-primary" style="background:#7a2a10;border-color:#7a2a10" onclick="submitReject()">✗ Reject Stage</button>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block extra_js %}
@@ -226,7 +279,7 @@ async function showDetail(jobId) {
     document.getElementById('detailContent').innerHTML = `
       <!-- Barcode visual -->
       <div style="text-align:center;padding:14px;background:#13110e;border:1px solid #2a2318;border-radius:6px;margin-bottom:16px">
-        <div class="serif text-gold" style="font-size:20px;font-weight:600">${j.job_code}</div>
+        <div class="text-gold" style="font-size:20px;font-weight:600">${j.job_code}</div>
         <div class="text-xs text-muted" style="margin:4px 0 10px">${j.barcode}</div>
         <div style="display:flex;gap:2px;justify-content:center;height:28px;align-items:flex-end">
           ${Array.from({length:28},(_,i)=>`<div style="width:${i%3===0?2:1}px;height:${i%5===0?28:i%3===0?20:16}px;background:#C9A84C;border-radius:1px;opacity:${0.6+(i%3)*0.15}"></div>`).join('')}
@@ -239,7 +292,7 @@ async function showDetail(jobId) {
         ['Metal', j.metal_type],
         ['Qty', j.order_qty + ' pcs'],
         ['Target Wt', fmtWt(j.target_weight)],
-        ['Wastage', j.allowed_wastage_pct + '%'],
+        ['Wastage', (j.wastage_allowed ?? j.allowed_wastage_pct ?? '—') + '%'],
         ['Priority', j.priority],
         ['Delivery', fmtDate(j.expected_delivery)],
         ['Created', fmtDate(j.created_at)],
@@ -264,6 +317,10 @@ async function showDetail(jobId) {
       <!-- Actions -->
       <div style="margin-top:18px;display:flex;flex-direction:column;gap:8px">
         <button class="btn btn-primary w-full" style="justify-content:center" onclick="openModal('advanceModal')">→ Advance Stage</button>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <button onclick="openApprove(${j.id},'${j.job_code}','${j.current_stage}')" style="background:#1a7a40;border:1px solid #1a7a40;color:#fff;border-radius:6px;padding:8px;font-size:12px;font-weight:600;cursor:pointer">✓ Approve</button>
+          <button onclick="openReject(${j.id},'${j.job_code}','${j.current_stage}')" style="background:#7a2a10;border:1px solid #7a2a10;color:#fff;border-radius:6px;padding:8px;font-size:12px;font-weight:600;cursor:pointer">✗ Reject</button>
+        </div>
         <button class="btn btn-secondary w-full" style="justify-content:center" onclick="viewWeightHistory(${j.id})">⚖ Weight History</button>
       </div>
     `;
@@ -313,9 +370,53 @@ async function submitAdvance() {
   } catch (e) { showToast(e.message, 'error'); }
 }
 
+// Weight History
 async function viewWeightHistory(jobId) {
   const logs = await API.get(`/api/v1/scale/history/${jobId}`);
   alert(logs.length ? logs.map(l=>`${fmtDateTime(l.at)}: ${l.net}g (${l.manual?'Manual':'Scale'})`).join('\n') : 'No weight logs yet');
+}
+
+// Approve Stage
+function openApprove(jobId, jobCode, stageName) {
+  currentJobId = jobId;
+  document.getElementById('approve_jobcode').textContent = jobCode;
+  document.getElementById('approve_stage_name').textContent = 'Current Stage: ' + stageName;
+  document.getElementById('approve_notes').value = '';
+  openModal('approveModal');
+}
+
+async function submitApprove() {
+  if (!currentJobId) return;
+  const notes = document.getElementById('approve_notes').value;
+  try {
+    await API.post(`/api/v1/jobs/${currentJobId}/approve-stage`, { notes });
+    showToast('Stage approved successfully!');
+    closeModal('approveModal');
+    showDetail(currentJobId);
+    loadJobs();
+  } catch (e) { showToast(e.message, 'error'); }
+}
+
+// Reject Stage
+function openReject(jobId, jobCode, stageName) {
+  currentJobId = jobId;
+  document.getElementById('reject_jobcode').textContent = jobCode;
+  document.getElementById('reject_stage_name').textContent = 'Current Stage: ' + stageName;
+  document.getElementById('reject_reason').value = '';
+  openModal('rejectModal');
+}
+
+async function submitReject() {
+  if (!currentJobId) return;
+  const reason = document.getElementById('reject_reason').value.trim();
+  if (!reason) { showToast('Please enter rejection reason', 'error'); return; }
+  try {
+    await API.post(`/api/v1/jobs/${currentJobId}/reject-stage`, { reason });
+    showToast('Stage rejected — job sent back', 'error');
+    closeModal('rejectModal');
+    showDetail(currentJobId);
+    loadJobs();
+  } catch (e) { showToast(e.message, 'error'); }
 }
 
 // Init

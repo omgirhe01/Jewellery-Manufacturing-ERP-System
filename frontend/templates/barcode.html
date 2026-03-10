@@ -87,7 +87,7 @@
   border-radius: 6px 6px 0 0;
 }
 .job-code-big {
-  font-family: 'Cormorant Garamond', serif;
+  font-family: 'DM Mono', 'Courier New', monospace;
   font-size: 28px;
   font-weight: 700;
   color: #C9A84C;
@@ -97,19 +97,20 @@
 .stage-pipeline {
   display: flex;
   align-items: center;
-  gap: 0;
+  gap: 4px;
   flex-wrap: wrap;
   margin: 16px 0;
+  row-gap: 6px;
 }
 .stage-step {
   display: flex;
   align-items: center;
-  gap: 0;
+  gap: 4px;
 }
 .stage-dot {
-  padding: 5px 12px;
+  padding: 4px 10px;
   font-size: 10px;
-  letter-spacing: 1px;
+  letter-spacing: 0.5px;
   border-radius: 20px;
   background: #13110e;
   border: 1px solid #2a2318;
@@ -125,12 +126,12 @@
   background: #1a1408;
   border-color: #C9A84C;
   color: #C9A84C;
-  font-weight: 700;
+  font-weight: 600;
 }
 .stage-arrow {
   font-size: 10px;
-  color: #2a2318;
-  margin: 0 2px;
+  color: #3a3020;
+  flex-shrink: 0;
 }
 
 /* ── Action Buttons ────────────────────────────────────── */
@@ -190,7 +191,7 @@
       <!-- Scanner Zone — click to focus -->
       <div class="scanner-zone" id="scannerZone" onclick="focusScanner()">
         <div class="scan-icon" id="scanIcon">▦</div>
-        <div class="scan-hint">USB Scanner se scan karo ya neeche type karo</div>
+        <div class="scan-hint">Scan with USB scanner or type below</div>
         <div class="scan-value" id="scanValue">—</div>
         <div class="scan-status" id="scanStatus" style="color:#5a4a2a">
           Page load hone par scanner ready hai
@@ -211,7 +212,7 @@
         </div>
         <div style="display:flex;gap:8px">
           <input id="manualInput" class="form-control" 
-                 placeholder="Job code ya barcode type karo..."
+                 placeholder="Enter job code or barcode..."
                  style="flex:1" autocomplete="off">
           <button class="btn btn-primary" onclick="manualLookup()">
             Search
@@ -344,7 +345,7 @@
                       text-transform:uppercase;margin-bottom:8px">
             Production Pipeline
           </div>
-          <div class="stage-pipeline" id="rPipeline"></div>
+          <div id="rPipeline" style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:14px"></div>
 
           <!-- Action buttons -->
           <div class="action-grid">
@@ -383,6 +384,33 @@
     </div>
   </div>
 
+</div>
+
+<!-- ── Advance Stage Modal ────────────────────────────────────── -->
+<div class="modal-overlay hidden" id="advanceStageModal">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <span class="modal-title" id="advStageTitle">Advance Stage</span>
+      <button class="modal-close" onclick="closeModal('advanceStageModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Weight Out (g)</label>
+        <input id="advWeightOut" type="number" step="0.001" min="0" class="form-control" placeholder="0.000">
+        <div style="font-size:11px;color:#5a4a2a;margin-top:4px">
+          Weight leaving this stage / entering next stage
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Notes (optional)</label>
+        <textarea id="advNotes" class="form-control" rows="2" placeholder="Any remarks..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('advanceStageModal')">Cancel</button>
+      <button class="btn btn-primary" id="advConfirmBtn" onclick="confirmAdvanceStage()">Confirm & Advance</button>
+    </div>
+  </div>
 </div>
 
 <!-- ── Stage History ─────────────────────────────────────────── -->
@@ -638,15 +666,20 @@ function displayJob(job) {
     const isPast    = isDoneBefore(allStages, stage, job.current_stage);
     const isCurrent = stage === job.current_stage;
 
-    const dot = document.createElement('div');
-    dot.className = 'stage-step';
-    dot.innerHTML = `
-      <div class="stage-dot ${isCurrent ? 'current' : isPast ? 'done' : ''}">
-        ${isCurrent ? '▶ ' : isPast ? '✓ ' : ''}${stage}
-      </div>
-      ${i < allStages.length - 1 ? '<span class="stage-arrow">›</span>' : ''}
+    const tile = document.createElement('div');
+    tile.style.cssText = `
+      padding: 6px 4px;
+      font-size: 10px;
+      text-align: center;
+      border-radius: 4px;
+      border: 1px solid ${isCurrent ? '#C9A84C' : isPast ? '#1a4a1a' : '#1e1a12'};
+      background: ${isCurrent ? '#1a1408' : isPast ? '#0a1a0a' : '#0d0b08'};
+      color: ${isCurrent ? '#C9A84C' : isPast ? '#4cc96f' : '#3a3020'};
+      font-weight: ${isCurrent ? '600' : 'normal'};
+      letter-spacing: 0.3px;
     `;
-    pipeline.appendChild(dot);
+    tile.textContent = stage;
+    document.getElementById('rPipeline').appendChild(tile);
   });
 
   // Stage history table
@@ -668,7 +701,7 @@ function displayJob(job) {
         : '—';
 
       return `<tr>
-        <td style="color:#C9A84C;font-weight:600">${s.stage_name}</td>
+        <td style="color:#C9A84C">${s.stage_name}</td>
         <td><span class="badge ${statusColor}">${s.status}</span></td>
         <td>${wi}</td>
         <td>${wo}</td>
@@ -709,40 +742,61 @@ function clearJob() {
 // ── Actions ───────────────────────────────────────────
 
 async function logScanAction() {
-  if (!currentJob) { showToast('Pehle job scan karo', 'error'); return; }
+  if (!currentJob) { showToast('Please scan a job first', 'error'); return; }
   const deptId = parseInt(document.getElementById('scanDeptSelect').value);
-  if (!deptId) { showToast('Department select karo', 'error'); return; }
+  if (!deptId) { showToast('Please select a department', 'error'); return; }
   const scanType = document.querySelector('input[name="scanType"]:checked').value;
-  await logScanToDB(currentJob.barcode, currentJob.id, scanType, deptId);
-  showToast(`${scanType} logged for ${currentJob.job_code}`);
+  try {
+    await API.post('/api/v1/jobs/log-scan', {
+      barcode: currentJob.barcode,
+      job_id: currentJob.id,
+      scan_type: scanType,
+      department_id: deptId
+    });
+    showToast(`${scanType} logged for ${currentJob.job_code}`);
+  } catch(e) {
+    showToast(e.message || 'Log failed', 'error');
+  }
 }
 
 async function logScanToDB(barcode, jobId, scanType, deptId = null) {
-  try {
-    await API.post(`/api/v1/jobs/barcode/${encodeURIComponent(barcode)}`, null);
-  } catch(e) {
-    // Scan already logged by barcode lookup endpoint — ignore
-  }
+  // Scan is already logged by the barcode lookup GET endpoint — no extra call needed
 }
 
 function goToScale() {
   if (!currentJob) return;
-  // Store job id for scale page
   sessionStorage.setItem('scale_job_id', currentJob.id);
   sessionStorage.setItem('scale_job_code', currentJob.job_code);
   window.location.href = '/scale';
 }
 
-async function advanceStage() {
-  if (!currentJob) { showToast('Pehle job scan karo', 'error'); return; }
-  if (!confirm(`"${currentJob.job_code}" ko ${currentJob.current_stage} se agle stage mein bhejein?`)) return;
+function advanceStage() {
+  if (!currentJob) { showToast('Please scan a job first', 'error'); return; }
+  // Show weight entry modal before advancing
+  document.getElementById('advStageTitle').textContent =
+    `${currentJob.job_code} — ${currentJob.current_stage} → Next Stage`;
+  document.getElementById('advWeightOut').value = parseFloat(currentJob.current_weight || 0).toFixed(3);
+  document.getElementById('advNotes').value = '';
+  openModal('advanceStageModal');
+}
+
+async function confirmAdvanceStage() {
+  const weightOut = parseFloat(document.getElementById('advWeightOut').value) || 0;
+  const notes     = document.getElementById('advNotes').value || '';
+  const btn       = document.getElementById('advConfirmBtn');
+  btn.disabled = true; btn.textContent = 'Advancing...';
   try {
-    const r = await API.post(`/api/v1/jobs/${currentJob.id}/advance-stage?weight_out=0`);
-    showToast(`✓ Stage advanced: ${r.current_stage}`);
+    const r = await API.post(`/api/v1/jobs/${currentJob.id}/advance-stage?weight_out=${weightOut}&notes=${encodeURIComponent(notes)}`);
+    showToast(`Stage advanced to: ${r.current_stage}`);
+    closeModal('advanceStageModal');
     // Refresh job details
-    await processBarcode(currentJob.barcode);
+    const refreshed = await API.get(`/api/v1/jobs/${currentJob.id}`);
+    currentJob = refreshed;
+    displayJob(refreshed);
   } catch(e) {
-    showToast(e.message, 'error');
+    showToast(e.message || 'Failed to advance stage', 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Confirm & Advance';
   }
 }
 

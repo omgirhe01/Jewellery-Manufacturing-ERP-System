@@ -1,7 +1,7 @@
 """
 scale_service.py — Production-Ready RS232 Weighing Scale Integration
 =====================================================================
-Gold jewellery use ke liye — 0.001g accuracy guaranteed
+For gold jewellery use — 0.001g accuracy guaranteed
 
 Supported scale protocols:
   - Mettler Toledo (MT-SICS / SBI format)
